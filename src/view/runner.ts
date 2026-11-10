@@ -54,6 +54,7 @@ export class Runner {
   private current: THREE.AnimationAction | null = null;
   private anim: Anim | '' = '';
   private pitch = 0;
+  private drop = 0;
   private mats: THREE.MeshStandardMaterial[] = [];
 
   constructor() {
@@ -123,6 +124,9 @@ export class Runner {
     const k = 1 - Math.exp(-dt * 14);
     const pitch = f.state === 'jump' ? (f.vy > 0 ? -0.12 : 0.08) : 0;
     this.pitch += (pitch - this.pitch) * k;
+    // Lying down, the body would hover: lower it onto the road while sliding
+    this.drop += ((f.state === 'slide' ? -0.12 : 0) - this.drop) * k;
+    this.pivot.position.y = this.drop;
     this.pivot.rotation.set(this.pitch, -f.lean * 0.4, -f.lean * 0.28);
     const glow = f.dashing ? 0.28 : 0;
     for (const m of this.mats) m.emissiveIntensity += (glow - m.emissiveIntensity) * k;
