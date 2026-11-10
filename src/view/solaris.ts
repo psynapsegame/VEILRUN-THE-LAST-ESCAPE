@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { Builder, box, canvasTexture, fluted } from './build';
+import { Builder, box, canvasTexture, fluted, glowTexture, stoneTexture } from './build';
+import type { Particles } from './particles';
 import type { Kind } from '../sim/config';
 
 /** SOLARIS — the golden antique city. Palette, sky, ground, props and obstacle models. */
@@ -90,6 +91,48 @@ function sideProps(): THREE.BufferGeometry[] {
       .add(new THREE.TorusGeometry(0.6, 0.12, 6, 14), PAL.gold, 0, 9.2, 0, 0, Math.PI / 2);
     out.push(b.build());
   }
+  // 6: palm tree
+  {
+    const b = new Builder();
+    for (let i = 0; i < 6; i++)
+      b.add(new THREE.CylinderGeometry(0.2 - i * 0.012, 0.24 - i * 0.012, 1.25, 7), i % 2 ? 0x8a5a34 : 0x9c6a3e, Math.sin(i * 0.5) * 0.35, 0.6 + i * 1.15, 0, 0, 0, -0.08 * i);
+    for (let i = 0; i < 9; i++) {
+      const a = (i / 9) * Math.PI * 2;
+      b.add(new THREE.ConeGeometry(0.42, 3.4, 4), i % 2 ? 0x3f8f4a : 0x56a85a, 0.9 + Math.cos(a) * 1.35, 6.9 - (i % 3) * 0.18, Math.sin(a) * 1.35, 0, -a, -1.95, [1, 1, 0.18]);
+    }
+    b.add(new THREE.SphereGeometry(0.34, 8, 6), 0x7a4a2a, 0.9, 7.1, 0);
+    out.push(b.build());
+  }
+  return out;
+}
+
+/** Monumental background buildings (second row, never reached). */
+function farBuildings(): THREE.BufferGeometry[] {
+  const out: THREE.BufferGeometry[] = [];
+  {
+    const b = new Builder();
+    for (let i = 0; i < 6; i++) b.add(box(26 - i * 4, 4, 22 - i * 3.4), i % 2 ? PAL.stone : PAL.stoneDark, 0, 2 + i * 4, 0);
+    b.add(new THREE.ConeGeometry(3.4, 5, 4), PAL.gold, 0, 26.5, 0, 0, Math.PI / 4);
+    for (const z of [-5, 0, 5]) b.add(box(0.4, 2.6, 1.4), PAL.cyan, 11.2, 6.2, z);
+    b.add(box(0.5, 9, 4.5), PAL.violet, 13.1, 4.5, 0);
+    out.push(b.build());
+  }
+  {
+    const b = new Builder();
+    b.add(box(16, 14, 16), PAL.stoneDark, 0, 7, 0).add(box(18, 1, 18), PAL.gold, 0, 14.5, 0)
+      .add(new THREE.CylinderGeometry(6, 6.5, 8, 12), PAL.stone, 0, 19, 0)
+      .add(new THREE.SphereGeometry(6.2, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), PAL.gold, 0, 23, 0)
+      .add(new THREE.ConeGeometry(0.7, 5, 6), PAL.stoneLight, 0, 31, 0);
+    for (const z of [-5, 0, 5]) b.add(box(0.4, 5, 2), PAL.cyan, 8.1, 7, z);
+    out.push(b.build());
+  }
+  {
+    const b = new Builder();
+    for (const z of [-8, -4, 0, 4, 8]) b.add(fluted(1.1, 16), PAL.stoneLight, 6, 9, z);
+    b.add(box(16, 1.5, 22), PAL.stoneDark, 0, 0.75, 0).add(box(15, 2.2, 21), PAL.stone, 0, 18.1, 0).add(box(16, 0.6, 22), PAL.gold, 0, 19.5, 0)
+      .add(box(9, 16, 18), PAL.stoneDark, -2, 9, 0);
+    out.push(b.build());
+  }
   return out;
 }
 
@@ -105,6 +148,7 @@ function archGeometry(): THREE.BufferGeometry {
     .add(box(16.2, 0.4, 3), PAL.gold, 0, 12.4, 0)
     .add(new THREE.TorusGeometry(1.5, 0.28, 8, 20), PAL.gold, 0, 14.4, 0)
     .add(new THREE.SphereGeometry(0.9, 12, 8), 0xfff0b0, 0, 14.4, 0);
+  for (const x of [-3.4, 3.4]) b.add(box(1.6, 3.6, 0.1), PAL.violet, x, 8.6, 0).add(box(1.8, 0.2, 0.16), PAL.gold, x, 6.75, 0);
   return b.build();
 }
 
@@ -141,14 +185,29 @@ export class Solaris {
   private props: THREE.BufferGeometry[];
   private slots: { mesh: THREE.Mesh; k: number; side: number }[] = [];
   private arches: THREE.Mesh[] = [];
-  private mat = new THREE.MeshLambertMaterial({ vertexColors: true });
+  /** Shared masonry material (also used by obstacles and debris). */
+  readonly mat = new THREE.MeshLambertMaterial({ vertexColors: true, map: stoneTexture() });
+  readonly sun: THREE.DirectionalLight;
+  readonly glow = glowTexture();
+  private sky: THREE.ShaderMaterial;
+  private far: THREE.BufferGeometry[];
+  private farSlots: { mesh: THREE.Mesh; k: number; side: number }[] = [];
+  private fires: THREE.Sprite[] = [];
 
   constructor(scene: THREE.Scene) {
     scene.fog = new THREE.Fog(PAL.fog, 45, 175);
     scene.add(new THREE.HemisphereLight(0xfff0d0, 0x6a4a78, 1.5));
-    const sun = new THREE.DirectionalLight(0xffdfae, 2.2);
-    sun.position.set(-6, 9, 4);
-    scene.add(sun);
+    const sun = (this.sun = new THREE.DirectionalLight(0xffdfae, 2.4));
+    sun.position.set(-9, 14, -4);
+    sun.target.position.set(0, 0, -14);
+    scene.add(sun, sun.target);
+    // One tight shadow map around the runner's playfield
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(1024, 1024);
+    const sc = sun.shadow.camera;
+    sc.left = -11; sc.right = 11; sc.top = 26; sc.bottom = -16; sc.near = 1; sc.far = 50;
+    sun.shadow.bias = -0.0015;
+    sun.shadow.normalBias = 0.04;
     const rim = new THREE.DirectionalLight(0x8f7bff, 0.8);
     rim.position.set(6, 4, -8);
     scene.add(rim);
@@ -158,17 +217,30 @@ export class Solaris {
       new THREE.SphereGeometry(400, 24, 12),
       new THREE.ShaderMaterial({
         side: THREE.BackSide, depthWrite: false, fog: false,
-        uniforms: { top: { value: new THREE.Color(PAL.skyTop) }, mid: { value: new THREE.Color(PAL.skyMid) }, hor: { value: new THREE.Color(PAL.fog) } },
+        uniforms: { top: { value: new THREE.Color(PAL.skyTop) }, mid: { value: new THREE.Color(PAL.skyMid) }, hor: { value: new THREE.Color(PAL.fog) }, time: { value: 0 } },
         vertexShader: 'varying vec3 d; void main(){ d = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
-        fragmentShader: `varying vec3 d; uniform vec3 top, mid, hor;
-          void main(){ float h = clamp(d.y, 0.0, 1.0);
+        fragmentShader: `precision highp float; varying vec3 d; uniform vec3 top, mid, hor; uniform float time;
+          float hs(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+          float ns(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f);
+            return mix(mix(hs(i), hs(i+vec2(1,0)), f.x), mix(hs(i+vec2(0,1)), hs(i+vec2(1,1)), f.x), f.y); }
+          void main(){ vec3 n = normalize(d); float h = clamp(n.y, 0.0, 1.0);
             vec3 c = mix(hor, mid, smoothstep(0.0, 0.22, h)); c = mix(c, top, smoothstep(0.15, 0.7, h));
-            float s = max(0.0, dot(normalize(d), normalize(vec3(-0.18, 0.2, -1.0))));
+            float s = max(0.0, dot(n, normalize(vec3(-0.18, 0.2, -1.0))));
+            // Stars near the zenith
+            vec2 sp = n.xz / (n.y + 0.4) * 60.0; float st = step(0.985, hs(floor(sp))) * smoothstep(0.35, 0.8, h);
+            c += vec3(0.9, 0.85, 1.0) * st * (0.5 + 0.5 * sin(time * 2.0 + hs(floor(sp)) * 40.0));
+            // Drifting cloud bands, lit gold by the sun and violet above
+            vec2 q = n.xz / (n.y + 0.12) * vec2(1.2, 2.6) + vec2(time * 0.012, 0.0);
+            float cl = ns(q) * 0.55 + ns(q * 2.3) * 0.3 + ns(q * 5.1) * 0.15;
+            cl = smoothstep(0.52, 0.8, cl) * smoothstep(0.015, 0.16, n.y) * (1.0 - smoothstep(0.45, 0.8, h));
+            vec3 cc = mix(vec3(0.55, 0.3, 0.6), vec3(1.0, 0.78, 0.5), clamp(s * 1.6 + 0.25 - h, 0.0, 1.0));
+            c = mix(c, cc, cl * 0.8);
             c += vec3(1.0, 0.8, 0.5) * (pow(s, 600.0) * 3.0 + pow(s, 12.0) * 0.45);
             gl_FragColor = vec4(c, 1.0); }`,
       }),
     );
     sky.renderOrder = -10;
+    this.sky = sky.material as THREE.ShaderMaterial;
     this.group.add(sky);
 
     // Road: sandstone slabs with golden lane inlays (8 m of road per tile)
@@ -206,8 +278,12 @@ export class Solaris {
     const road = new THREE.Mesh(new THREE.PlaneGeometry(8, 240), new THREE.MeshLambertMaterial({ map: this.road }));
     road.rotation.x = -Math.PI / 2;
     road.position.z = -100;
+    road.receiveShadow = true;
     this.group.add(road);
-    const sand = new THREE.Mesh(new THREE.PlaneGeometry(500, 500), new THREE.MeshLambertMaterial({ color: PAL.sand }));
+    const terrace = stoneTexture();
+    terrace.repeat.set(125, 125);
+    const sand = new THREE.Mesh(new THREE.PlaneGeometry(500, 500), new THREE.MeshLambertMaterial({ color: PAL.sand, map: terrace }));
+    sand.receiveShadow = true;
     sand.rotation.x = -Math.PI / 2;
     sand.position.set(0, -0.6, -150);
     this.group.add(sand);
@@ -233,8 +309,22 @@ export class Solaris {
       for (const side of [-1, 1]) {
         const mesh = new THREE.Mesh(this.props[0], this.mat);
         mesh.scale.x = -side; // props are modelled for the left side
+        mesh.castShadow = true;
         this.group.add(mesh);
         this.slots.push({ mesh, k: -1e9, side });
+        const fire = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glow, color: 0xff9a3c, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+        fire.scale.setScalar(5);
+        fire.visible = false;
+        this.group.add(fire);
+        this.fires.push(fire);
+      }
+    this.far = farBuildings();
+    for (let i = 0; i < 7; i++)
+      for (const side of [-1, 1]) {
+        const mesh = new THREE.Mesh(this.far[0], this.mat);
+        mesh.scale.x = -side;
+        this.group.add(mesh);
+        this.farSlots.push({ mesh, k: -1e9, side });
       }
     const arch = archGeometry();
     for (let i = 0; i < 3; i++) {
@@ -246,8 +336,22 @@ export class Solaris {
   }
 
   /** Recycle props around the runner. No allocation: geometries are shared, meshes reused. */
-  update(dist: number): void {
+  update(dist: number, dt: number, parts: Particles): void {
+    this.sky.uniforms.time.value += dt;
     this.road.offset.y = (dist / 8) % 1;
+    const FAR = 30;
+    const fb = Math.floor(dist / FAR) - 1;
+    for (let n = 0; n < this.farSlots.length; n++) {
+      const s = this.farSlots[n];
+      const k = fb + (n >> 1);
+      if (s.k !== k) {
+        s.k = k;
+        const h = hash(k * 2 + 77 + (s.side > 0 ? 1 : 0));
+        s.mesh.geometry = this.far[Math.floor(h * this.far.length)];
+        s.mesh.position.x = s.side * (30 + h * 10);
+      }
+      s.mesh.position.z = dist - k * FAR - 9;
+    }
     const base = Math.floor(dist / SLOT) - 1;
     for (let n = 0; n < this.slots.length; n++) {
       const s = this.slots[n];
@@ -257,8 +361,18 @@ export class Solaris {
         const h = hash(k * 2 + (s.side > 0 ? 1 : 0));
         s.mesh.geometry = this.props[Math.floor(h * this.props.length)];
         s.mesh.position.x = s.side * (6.4 + hash(k * 31 + s.side) * 1.5);
+        s.mesh.userData.fire = s.mesh.geometry === this.props[1];
       }
       s.mesh.position.z = dist - k * SLOT;
+      // Braziers: flickering halo and rising embers
+      const fire = this.fires[n];
+      fire.visible = s.mesh.userData.fire;
+      if (fire.visible) {
+        fire.position.set(s.mesh.position.x, 4.2, s.mesh.position.z);
+        fire.scale.setScalar(4.4 + Math.sin(dist * 0.9 + n) * 0.5 + Math.random() * 0.5);
+        if (s.mesh.position.z > -90 && Math.random() < dt * 14)
+          parts.emit(fire.position.x + (Math.random() - 0.5) * 0.6, 4, fire.position.z, (Math.random() - 0.5) * 0.6, 1.5 + Math.random() * 2, 0, 1, 0.5, 0.15, 0.9);
+      }
     }
     const ARCH = SLOT * 6;
     const ab = Math.floor(dist / ARCH);

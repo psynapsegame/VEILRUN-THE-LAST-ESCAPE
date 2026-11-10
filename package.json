@@ -1,6 +1,6 @@
 {
   "name": "veilrun-the-last-escape",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -17,6 +17,8 @@
   },
   "devDependencies": {
     "@capacitor/cli": "^6.2.3",
+    "@gltf-transform/core": "^4.5.1",
+    "@gltf-transform/functions": "^4.5.1",
     "@types/three": "^0.170.0",
     "esbuild": "^0.28.2",
     "typescript": "^5.9.3",

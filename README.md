@@ -59,12 +59,24 @@ Pas encore fait / non vérifié :
 - Le personnage et les décors sont modélisés par code (stylisés, originaux). Ce ne sont pas encore des modèles sculptés/riggés de qualité finale : ce sera l'objet de la Phase 2 (assets glTF).
 - Course sur murs, câbles, vol plané, boss, autres univers, progression, boutique : phases suivantes.
 
+## Phase 2 — avancement
+
+Fait et vérifié dans le navigateur :
+- Coureur remplacé par un personnage modélisé, riggé et animé (course, saut, glissade, chute), recoloré aux couleurs du jeu.
+- Ombres dynamiques (désactivées automatiquement sur les appareils lents, remplacées par une ombre simple).
+- Ciel animé (nuages, étoiles), texture de maçonnerie sur tous les décors, second plan de monuments, palmiers, braseros avec flammes et braises, halos lumineux sur les obstacles.
+- Destruction : gravats projetés quand le dash brise un obstacle.
+
+Reste pour clore la Phase 2 : décors et obstacles modélisés (ils sont encore construits par code), animations dédiées de glissade et d'atterrissage, bande-son enrichie, mesure des performances sur téléphone réel.
+
+Ressources tierces : personnage issu de « KayKit : Adventurers Character Pack » de Kay Lousberg, licence CC0 (usage commercial libre, sans attribution obligatoire) — voir `assets-src/KayKit-Adventurers-LICENSE.txt`. Le modèle est préparé par `tools/trim-runner.mjs`.
+
 ## Plan de production
 
 | Phase | Contenu | État |
 |---|---|---|
 | 1 | Prototype de gameplay | livrée |
-| 2 | Vertical slice SOLARIS : modèles glTF définitifs, animations, ombres, destruction, bande-son | à faire |
+| 2 | Vertical slice SOLARIS : modèles glTF définitifs, animations, ombres, destruction, bande-son | en cours (voir ci-dessous) |
 | 3 | Générateur par segments, événements, embranchements | à faire |
 | 4 | Mécaniques avancées : murs, câbles, vol plané, bonus | à faire |
 | 5 | Six univers, portails sans chargement, six boss | à faire |

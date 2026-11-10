@@ -3,7 +3,7 @@ import { CFG, Kind } from '../sim/config';
 import type { GameEvent } from '../sim/game';
 import type { Player } from '../sim/player';
 import type { Coin, Row } from '../sim/track';
-import { canvasTexture } from './build';
+import { box, canvasTexture } from './build';
 import { Particles } from './particles';
 import { Runner } from './runner';
 import { PAL, Solaris, obstacleGeometry } from './solaris';
@@ -27,6 +27,10 @@ export class World {
   readonly camera = new THREE.PerspectiveCamera(62, 1, 0.1, 600);
   private env: Solaris;
   private runner = new Runner();
+  private debris: THREE.InstancedMesh;
+  private deb = { p: new Float32Array(48 * 3), v: new Float32Array(48 * 3), life: new Float32Array(48), head: 0 };
+  private eul = new THREE.Euler();
+  private sc = new THREE.Vector3();
   private shadow: THREE.Mesh;
   private parts = new Particles();
   private pools = new Map<Kind, THREE.Mesh[]>();
@@ -53,7 +57,10 @@ export class World {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     this.ratios = [dpr, Math.min(dpr, 1.5), 1, 0.75].filter((r, i, a) => i === 0 || r < a[i - 1]);
     this.renderer.setPixelRatio(this.ratios[0]);
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.env = new Solaris(this.scene);
+    void this.runner.load();
 
     this.scene.add(this.runner.root);
     this.shadow = new THREE.Mesh(
@@ -71,16 +78,26 @@ export class World {
     );
     this.shadow.rotation.x = -Math.PI / 2;
     this.shadow.position.y = 0.02;
+    this.shadow.visible = false;
     this.scene.add(this.shadow);
     this.scene.add(this.parts.points);
 
-    const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
+    const mat = this.env.mat;
+    const halo = (color: number, x: number, y: number, z: number, size: number) => {
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.env.glow, color, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+      sp.position.set(x, y, z);
+      sp.scale.setScalar(size);
+      return sp;
+    };
     for (const k of KINDS) {
       const geo = obstacleGeometry(k);
       const pool: THREE.Mesh[] = [];
       for (let i = 0; i < 16; i++) {
         const m = new THREE.Mesh(geo, mat);
         m.visible = false;
+        m.castShadow = true;
+        if (k === 'high') m.add(halo(PAL.cyan, 0, 2.4, 0.1, 2.6));
+        if (k === 'full') m.add(halo(PAL.violet, 0, 1.75, 0.6, 2.4), halo(PAL.gold, 0, 3.5, 0, 1.6));
         this.scene.add(m);
         pool.push(m);
       }
@@ -94,6 +111,14 @@ export class World {
     );
     this.coins.frustumCulled = false;
     this.scene.add(this.coins);
+    // Rubble chunks thrown when an obstacle is smashed
+    this.debris = new THREE.InstancedMesh(box(0.42, 0.34, 0.38), new THREE.MeshLambertMaterial({ color: PAL.stoneLight, map: this.env.mat.map }), 48);
+    this.debris.frustumCulled = false;
+    this.debris.castShadow = true;
+    this.debris.count = 48;
+    this.m4.makeScale(0, 0, 0);
+    for (let i = 0; i < 48; i++) this.debris.setMatrixAt(i, this.m4);
+    this.scene.add(this.debris);
     this.resize();
   }
 
@@ -111,6 +136,10 @@ export class World {
   setQuality(level: number): number {
     this.quality = Math.max(0, Math.min(this.ratios.length - 1, level));
     this.renderer.setPixelRatio(this.ratios[this.quality]);
+    // Lower tiers trade the real-time shadow map for a blob shadow
+    const shadows = this.quality < 2;
+    this.env.sun.castShadow = shadows;
+    this.shadow.visible = !shadows;
     this.resize();
     return this.ratios[this.quality];
   }
@@ -156,6 +185,17 @@ export class World {
         const m = ms?.[ev.lane];
         if (m && ms) { m.visible = false; this.pools.get(m.userData.kind)!.push(m); ms[ev.lane] = null; }
         P.burst(34, (ev.lane - 1) * CFG.laneWidth, 1.2, -1, 9, 1, 0.8, 0.5, 0.8, 14);
+        for (let i = 0; i < 14; i++) {
+          const d = this.deb, j = d.head * 3;
+          d.p[j] = (ev.lane - 1) * CFG.laneWidth + (Math.random() - 0.5) * 1.2;
+          d.p[j + 1] = 0.3 + Math.random() * 2.4;
+          d.p[j + 2] = -0.8;
+          d.v[j] = (Math.random() - 0.5) * 9;
+          d.v[j + 1] = 3 + Math.random() * 7;
+          d.v[j + 2] = -(4 + Math.random() * 10);
+          d.life[d.head] = 1.6;
+          d.head = (d.head + 1) % 48;
+        }
         P.burst(12, (ev.lane - 1) * CFG.laneWidth, 1.2, -1, 6, 0.6, 0.4, 1, 0.6);
         this.shake = 0.5;
         break;
@@ -173,7 +213,7 @@ export class World {
     const p = s.player;
     const scroll = s.dist - this.lastDist;
     this.lastDist = s.dist;
-    this.env.update(s.dist);
+    this.env.update(s.dist, dt, this.parts);
 
     // Obstacles: bind pooled meshes to the rows in view
     for (const row of s.track.rows) {
@@ -225,13 +265,29 @@ export class World {
     if (p.state === 'run' && Math.random() < dt * 28)
       this.parts.emit(p.x + (Math.random() - 0.5) * 0.3, 0.08, 0.2, (Math.random() - 0.5) * 0.8, 0.8 + Math.random(), 0, 0.55, 0.42, 0.28, 0.4, 2);
     if (p.state === 'slide' && Math.random() < dt * 90)
-      this.parts.emit(p.x + (Math.random() - 0.5) * 0.5, 0.08, -0.3, (Math.random() - 0.5) * 2, 1 + Math.random() * 1.5, 0, 1, 0.75, 0.4, 0.35, 5);
+      this.parts.emit(p.x + (Math.random() - 0.5) * 0.7, 0.08, 0.55, (Math.random() - 0.5) * 2, 1 + Math.random() * 1.5, 0, 1, 0.75, 0.4, 0.35, 5);
     if (s.dashing)
       for (let i = 0; i < 3; i++)
         this.parts.emit(p.x + (Math.random() - 0.5) * 0.7, p.y + 0.3 + Math.random() * 1.3, 0.2, 0, 0, 0, 0.3, 0.85, 1, 0.35);
     if (Math.random() < dt * 14)
       this.parts.emit((Math.random() - 0.5) * 16, 0.5 + Math.random() * 6, -30 - Math.random() * 60, 0, 0.2, 0, 1, 0.8, 0.45, 3.5);
     this.parts.update(dt, scroll);
+    const d = this.deb;
+    for (let i = 0; i < 48; i++) {
+      if (d.life[i] <= 0) continue;
+      const j = i * 3;
+      d.life[i] -= dt;
+      d.v[j + 1] -= 28 * dt;
+      d.p[j] += d.v[j] * dt;
+      d.p[j + 1] += d.v[j + 1] * dt;
+      d.p[j + 2] += d.v[j + 2] * dt + scroll;
+      if (d.p[j + 1] < 0.15) { d.p[j + 1] = 0.15; d.v[j + 1] *= -0.35; d.v[j] *= 0.6; d.v[j + 2] *= 0.6; }
+      const sz = d.life[i] <= 0 ? 0 : Math.min(1, d.life[i] * 3) * (0.6 + (i % 5) * 0.2);
+      this.q.setFromEuler(this.eul.set(d.life[i] * 7 + i, d.life[i] * 5, i));
+      this.m4.compose(this.v.set(d.p[j], d.p[j + 1], d.p[j + 2]), this.q, this.sc.set(sz, sz, sz));
+      this.debris.setMatrixAt(i, this.m4);
+    }
+    this.debris.instanceMatrix.needsUpdate = true;
 
     // Camera: trails the runner, widens with speed, dips for slides
     const k = 1 - Math.exp(-dt * 9);
@@ -243,8 +299,8 @@ export class World {
     const sx = (Math.random() - 0.5) * this.shake * 0.5;
     const sy = (Math.random() - 0.5) * this.shake * 0.5;
     const speedF = Math.min(1, Math.max(0, (s.speed - CFG.speedStart) / (CFG.speedMax - CFG.speedStart)));
-    this.camera.position.set(this.camX + sx, 3.25 + this.camY + sy, 5.6 - speedF * 0.5);
-    this.camera.lookAt(this.camX * 0.9 + p.x * 0.12, 1.5 + this.camY * 0.6, -7);
+    this.camera.position.set(this.camX + sx, 3.75 + this.camY + sy, 6.3 - speedF * 0.5);
+    this.camera.lookAt(this.camX * 0.9 + p.x * 0.12, 1.3 + this.camY * 0.6, -8);
     this.camera.rotation.z += -p.lean * 0.035;
     const fov = this.baseFov + speedF * 7 + this.fovKick * 9 + (s.dashing ? 5 : 0);
     if (Math.abs(fov - this.camera.fov) > 0.05) {

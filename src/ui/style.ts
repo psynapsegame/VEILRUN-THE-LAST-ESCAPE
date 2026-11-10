@@ -5,6 +5,7 @@ export const CSS = `
 html,body{height:100%;overflow:hidden;overscroll-behavior:none;background:var(--ink);color:var(--text)}
 #vr{position:fixed;inset:0;font-family:var(--ui);user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:none;-webkit-tap-highlight-color:transparent;overflow:hidden;background:var(--ink)}
 #vr [hidden]{display:none!important}
+#vr::after{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(120% 90% at 50% 45%,transparent 55%,rgba(7,6,11,.5))}
 #vr canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
 #vr button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;touch-action:manipulation}
 #vr button:focus-visible{outline:2px solid var(--cyan);outline-offset:3px}

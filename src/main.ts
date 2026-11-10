@@ -90,14 +90,17 @@ window.addEventListener('keydown', e => {
 document.addEventListener('visibilitychange', () => { if (document.hidden) setPaused(true); });
 
 // Adaptive quality + diagnostics
+// `?q=0..3` pins a graphics tier (testing); otherwise the tier adapts to the measured frame time.
+const pinned = /[?&]q=(\d)/.exec(location.search);
+if (pinned) world.setQuality(+pinned[1]);
 let ema = 16.7, slowT = 0, fastT = 0, dbgT = 0, frames = 0, worst = 0;
 function monitor(ms: number, dt: number): void {
   ema += (ms - ema) * 0.05;
   worst = Math.max(worst, ms);
   frames++;
   if (ema > 21) { slowT += dt; fastT = 0; } else if (ema < 17.5) { fastT += dt; slowT = 0; } else slowT = fastT = 0;
-  if (slowT > 1.5 && world.quality < world.maxQuality) { world.setQuality(world.quality + 1); slowT = 0; ema = 16.7; }
-  if (fastT > 20 && world.quality > 0) { world.setQuality(world.quality - 1); fastT = 0; }
+  if (!pinned && slowT > 1.5 && world.quality < world.maxQuality) { world.setQuality(world.quality + 1); slowT = 0; ema = 16.7; }
+  if (!pinned && fastT > 20 && world.quality > 0) { world.setQuality(world.quality - 1); fastT = 0; }
   dbgT += dt;
   if (debugOn && dbgT > 0.5) {
     const i = world.renderer.info.render;
