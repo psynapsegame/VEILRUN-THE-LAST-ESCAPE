@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { box, glowTexture } from './build';
 import { Banners } from './banners';
+import { hash, isCollapse } from './events';
 import { Devourer } from './devourer';
 import frescoesUrl from '../assets/art/frescoes.webp';
 import panoramaUrl from '../assets/art/panorama.webp';
@@ -22,13 +23,6 @@ const FAR_PICK = [0, 1, 2, 3, 0, 1, 3];
 /** Slots belonging to an open bridge section. */
 function onBridge(k: number): boolean {
   return ((k % 30) + 30) % 30 >= 22;
-}
-
-function hash(n: number): number {
-  let x = Math.imul(n ^ 0x9e3779b9, 0x85ebca6b);
-  x ^= x >>> 13;
-  x = Math.imul(x, 0xc2b2ae35);
-  return ((x ^ (x >>> 16)) >>> 0) / 4294967296;
 }
 
 export class Solaris {
@@ -64,7 +58,7 @@ export class Solaris {
 
   constructor(scene: THREE.Scene) {
     installAtmosphere(SUN_DIR);
-    scene.fog = new THREE.FogExp2(PAL.fog, 0.0026);
+    scene.fog = new THREE.FogExp2(PAL.fog, 0.002);
     this.wall = SURFACES.wall();
     this.wall.repeat.set(0.5, 0.5); // prop UVs are in half-metres: one texture tile spans 4 m
     this.mats = [
@@ -241,10 +235,10 @@ export class Solaris {
     }
   }
 
-  /** Stand a column on the road-side corner of some city blocks, ready to fall. */
+  /** Stand a column on the road-side corner of the one block per 476 m chosen for a collapse. */
   private armFaller(k: number, side: number, geo: THREE.BufferGeometry): void {
     const i = this.props.indexOf(geo);
-    if (i === BRIDGE || NO_COLLAPSE.has(i) || hash(k * 13 + side * 7) > 0.2) return;
+    if (i === BRIDGE || NO_COLLAPSE.has(i) || !isCollapse(k, side)) return;
     const f = this.fallers.find(x => !x.mesh.visible);
     if (!f) return;
     Object.assign(f, { k, side, angle: 0, vel: 0, done: false });
@@ -257,7 +251,8 @@ export class Solaris {
   update(dist: number, dt: number, parts: Particles): void {
     this.sky.uniforms.time.value += dt;
     this.banners.begin(dt);
-    this.devourer.update(dt, onBridge(Math.floor(dist / SLOT) + 2));
+    // It looms a little more the further you run, and the haze opens on the bridges
+    this.devourer.update(dt, Math.min(1, dist / 2500) * 0.45 + (onBridge(Math.floor(dist / SLOT) + 2) ? 0.45 : 0));
     this.road.offset.y = (dist / 3) % 1;
     this.terrace.offset.y = (dist / 4) % 1;
     this.curb.offset.x = -((dist * 0.4) % 1);
@@ -302,7 +297,7 @@ export class Solaris {
       if (fire.visible) {
         fire.position.set(s.mesh.position.x, s.mesh.userData.fire, s.mesh.position.z);
         fire.scale.setScalar(4.4 + Math.sin(dist * 0.9 + n) * 0.5 + Math.random() * 0.5);
-        if (s.mesh.position.z > -90 && Math.random() < dt * 14)
+        if (s.mesh.position.z > -90 && Math.random() < dt * 5)
           parts.emit(fire.position.x + (Math.random() - 0.5) * 0.6, fire.position.y, fire.position.z, (Math.random() - 0.5) * 0.6, 1.5 + Math.random() * 2, 0, 1, 0.5, 0.15, 0.9);
       }
     }

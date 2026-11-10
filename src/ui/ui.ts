@@ -4,7 +4,7 @@ import type { SaveData } from '../save';
 import titleUrl from '../assets/art/title.webp';
 import { CSS } from './style';
 
-export const VERSION = '0.8.0';
+export const VERSION = '0.9.0';
 const fmt = (n: number) => Math.floor(n).toLocaleString('fr-FR');
 
 export interface UiHandlers {

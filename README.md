@@ -42,7 +42,7 @@ android/      Projet Android Studio (Capacitor)
 tests/        Vitest
 ```
 
-Principes : la simulation ignore le rendu (donc testable et rejouable par graine — base du Défi quotidien) ; aucun objet créé pendant la course (pools d'obstacles, particules en tampon circulaire, géométries partagées) ; résolution adaptative selon le temps de trame.
+Principes : la simulation ignore le rendu (donc testable et rejouable par graine — base du Défi quotidien) ; aucun objet créé pendant la course (pools d'obstacles, particules en tampon circulaire, géométries partagées) ; qualité adaptative par niveaux (voir ci-dessous).
 
 ## État réel — Phase 1
 
@@ -58,6 +58,10 @@ Pas encore fait / non vérifié :
 - **iOS** : nécessite un Mac avec Xcode et un compte Apple Developer ; projet iOS pas encore généré.
 - Le personnage et les décors sont modélisés par code (stylisés, originaux). Ce ne sont pas encore des modèles sculptés/riggés de qualité finale : ce sera l'objet de la Phase 2 (assets glTF).
 - Course sur murs, câbles, vol plané, boss, autres univers, progression, boutique : phases suivantes.
+
+## Qualité graphique adaptative
+
+Cinq niveaux, du plus beau au plus léger : 0 rayons de soleil + lueur + étalonnage ; 1 lueur + étalonnage ; 2 ombres seules ; 3 ombre simple, résolution ×1,6 ; 4 ombre simple, résolution ×1,3. Les effets sautent en premier, la netteté en dernier. `src/quality.ts` décide (testé) : rien n'est mesuré pendant le chargement ni juste après un changement, un niveau n'est abandonné qu'après 2,5 s de lenteur continue, un meilleur niveau est retenté après 25 s de fluidité et définitivement écarté s'il ne tient pas. Le dernier niveau qui a fonctionné est mémorisé sur l'appareil. Diagnostic : toucher la ligne de version du menu (images par seconde, résolution, niveau).
 
 ## Refonte visuelle (budget 0 €) — avancement
 

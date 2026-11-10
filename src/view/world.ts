@@ -66,15 +66,11 @@ export class World {
   private t = 0;
   private lastDist = 0;
   private baseFov = 62;
-  /** Current render scale steps (device pixel ratio caps), highest first. */
-  private ratios: number[];
-  quality = 0;
+  /** Current graphics tier: 0 best … 4 lightest (see setQuality). */
+  quality = 1;
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    this.ratios = [dpr, Math.min(dpr, 1.5), 1, 0.75].filter((r, i, a) => i === 0 || r < a[i - 1]);
-    this.renderer.setPixelRatio(this.ratios[0]);
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.info.autoReset = false;
@@ -105,7 +101,7 @@ export class World {
       void x;
       this.onRumble?.();
     };
-    this.composer.addPass(new UnrealBloomPass(new THREE.Vector2(256, 256), 0.32, 0.7, 0.92));
+    this.composer.addPass(new UnrealBloomPass(new THREE.Vector2(256, 256), 0.16, 0.5, 1.0)); // a hint of glow, never a haze
     this.composer.addPass(new OutputPass());
     this.composer.addPass(new ShaderPass({
       uniforms: { tDiffuse: { value: null } },
@@ -181,7 +177,7 @@ export class World {
     this.m4.makeScale(0, 0, 0);
     for (let i = 0; i < 48; i++) this.debris.setMatrixAt(i, this.m4);
     this.scene.add(this.debris);
-    this.resize();
+    this.setQuality(this.quality);
   }
 
   resize(): void {
@@ -212,21 +208,25 @@ export class World {
     }
   }
 
-  /** Step render resolution down/up (adaptive quality). Returns the new pixel ratio. */
-  setQuality(level: number): number {
-    this.quality = Math.max(0, Math.min(this.ratios.length - 1, level));
-    this.renderer.setPixelRatio(this.ratios[this.quality]);
-    // Lower tiers trade the real-time shadow map for a blob shadow
-    this.post = this.quality < 2;
+  /**
+   * Graphics tiers, from the best picture to the lightest. Effects go first and sharpness last:
+   *   0 shafts + glow + grade, shadows, full resolution     3 blob shadow, no effects, 1.6x
+   *   1 glow + grade, shadows, full resolution              4 blob shadow, no effects, 1.3x
+   *   2 shadows only, full resolution
+   */
+  setQuality(level: number): void {
+    this.quality = Math.max(0, Math.min(4, level));
+    const dpr = window.devicePixelRatio || 1;
+    this.renderer.setPixelRatio(Math.min(dpr, [2, 2, 2, 1.6, 1.3][this.quality]));
+    this.post = this.quality <= 1;
     this.rays.enabled = this.quality === 0;
-    const shadows = this.quality < 2;
+    const shadows = this.quality <= 2;
     this.env.sun.castShadow = shadows;
     this.shadow.visible = !shadows;
     this.resize();
-    return this.ratios[this.quality];
   }
   get maxQuality(): number {
-    return this.ratios.length - 1;
+    return 4;
   }
 
   /** Forget every pooled obstacle (new run). */
@@ -355,11 +355,9 @@ export class World {
     if (s.dashing)
       for (let i = 0; i < 3; i++)
         this.parts.emit(p.x + (Math.random() - 0.5) * 0.7, p.y + 0.3 + Math.random() * 1.3, 0.2, 0, 0, 0, 0.3, 0.85, 1, 0.35);
-    // Golden dust hanging in the air, and sand blown across the causeway
-    if (Math.random() < dt * 30)
-      this.parts.emit((Math.random() - 0.5) * 18, 0.5 + Math.random() * 7, -20 - Math.random() * 70, 0.3, 0.15, 0, 0.9, 0.7, 0.38, 3.5);
-    if (Math.random() < dt * 22)
-      this.parts.emit(-6, 0.1 + Math.random() * 0.5, -8 - Math.random() * 45, 3 + Math.random() * 3, 0.2, 0, 0.5, 0.4, 0.26, 2.2);
+    // A few motes of golden dust far ahead: sparse on purpose, they only hint at the air
+    if (Math.random() < dt * 5)
+      this.parts.emit((Math.random() - 0.5) * 20, 1 + Math.random() * 6, -45 - Math.random() * 50, 0.25, 0.1, 0, 0.5, 0.38, 0.2, 4.5, 0, true);
     this.parts.update(dt, scroll);
     const d = this.deb;
     for (let i = 0; i < 48; i++) {
@@ -407,7 +405,7 @@ export class World {
       this.v.copy(SUN_DIR).multiplyScalar(500).add(this.camera.position).project(this.camera);
       const ahead = this.v.z < 1 && Math.abs(this.v.x) < 1.6 && Math.abs(this.v.y) < 1.6;
       (this.rays.uniforms.sun.value as THREE.Vector2).set(this.v.x * 0.5 + 0.5, this.v.y * 0.5 + 0.5);
-      this.rays.uniforms.amt.value = ahead ? 0.3 : 0;
+      this.rays.uniforms.amt.value = ahead ? 0.2 : 0;
     }
     this.renderer.info.reset(); // manual reset so the counters cover every pass of the frame
     if (this.post) this.composer.render();

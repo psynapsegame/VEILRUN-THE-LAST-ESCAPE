@@ -1,5 +1,6 @@
 import { GameAudio } from './audio/audio';
 import { GestureRecognizer } from './input/gestures';
+import { QualityGovernor } from './quality';
 import { loadSave, recordRun, writeSave, KV } from './save';
 import { CFG } from './sim/config';
 import { Game } from './sim/game';
@@ -45,6 +46,7 @@ if (splashDone) ui.hideSplash();
 
 function start(): void {
   game = new Game((Math.random() * 2 ** 31) | 0);
+  gov.rewarm(2); // starting a run allocates and uploads: do not judge those frames
   world.reset();
   acc = 0;
   mode = 'run';
@@ -94,22 +96,30 @@ window.addEventListener('keydown', e => {
 });
 document.addEventListener('visibilitychange', () => { if (document.hidden) setPaused(true); });
 
-// Adaptive quality + diagnostics
-// `?q=0..3` pins a graphics tier (testing); otherwise the tier adapts to the measured frame time.
+// Adaptive quality + diagnostics. `?q=0..4` pins a graphics tier (testing); otherwise the governor adapts it,
+// starting from the tier that worked last time on this device (never during loading, see src/quality.ts).
 const pinned = /[?&]q=(\d)/.exec(location.search);
-if (pinned) world.setQuality(+pinned[1]);
-let ema = 16.7, slowT = 0, fastT = 0, dbgT = 0, frames = 0, worst = 0;
+const TIER_KEY = 'veilrun.quality';
+let startTier = 1;
+try {
+  const q = Number(store?.getItem(TIER_KEY));
+  if (store?.getItem(TIER_KEY) !== null && Number.isInteger(q) && q >= 0 && q <= world.maxQuality) startTier = q;
+} catch { /* no storage: start from the default tier */ }
+const gov = new QualityGovernor(world.maxQuality, pinned ? +pinned[1] : startTier);
+world.setQuality(gov.tier);
+let dbgT = 0, worst = 0;
 function monitor(ms: number, dt: number): void {
-  ema += (ms - ema) * 0.05;
   worst = Math.max(worst, ms);
-  frames++;
-  if (ema > 21) { slowT += dt; fastT = 0; } else if (ema < 17.5) { fastT += dt; slowT = 0; } else slowT = fastT = 0;
-  if (!pinned && slowT > 1.5 && world.quality < world.maxQuality) { world.setQuality(world.quality + 1); slowT = 0; ema = 16.7; }
-  if (!pinned && fastT > 20 && world.quality > 0) { world.setQuality(world.quality - 1); fastT = 0; }
+  if (!splashDone) gov.rewarm(); // the loading screen is not representative of play
+  const tier = gov.frame(ms, dt);
+  if (tier !== null && !pinned) {
+    world.setQuality(tier);
+    try { store?.setItem(TIER_KEY, String(tier)); } catch { /* ignore */ }
+  }
   dbgT += dt;
   if (debugOn && dbgT > 0.5) {
     const i = world.renderer.info.render;
-    ui.debug(`${(1000 / ema).toFixed(0)} fps  ${ema.toFixed(1)} ms  pire ${worst.toFixed(0)} ms\n` +
+    ui.debug(`${(1000 / gov.ms).toFixed(0)} fps  ${gov.ms.toFixed(1)} ms  pire ${worst.toFixed(0)} ms\n` +
       `appels ${i.calls}  tris ${i.triangles}\nrésolution ×${world.renderer.getPixelRatio().toFixed(2)} (niveau ${world.quality})\n` +
       (game ? `v ${game.speed.toFixed(1)} m/s  lignes ${game.track.rows.length}` : 'menu'));
     dbgT = 0; worst = 0;
