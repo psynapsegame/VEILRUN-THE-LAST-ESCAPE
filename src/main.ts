@@ -36,6 +36,7 @@ const ui = new Ui(
   save.muted,
 );
 const world = new World(ui.canvas);
+world.onRumble = () => audio.sfx('rumble');
 ui.menu(save);
 
 function start(): void {

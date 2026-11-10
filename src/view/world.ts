@@ -13,7 +13,7 @@ import { box, canvasTexture } from './build';
 import { Particles } from './particles';
 import { Runner } from './runner';
 import { obstacleGeometry } from './kit';
-import { PAL, Solaris } from './solaris';
+import { PAL, SUN_DIR, Solaris } from './solaris';
 
 /** What the renderer needs from a run (the Game satisfies it; so does the menu's idle scene). */
 export interface ViewState {
@@ -36,6 +36,9 @@ export class World {
   private runner = new Runner();
   private composer: EffectComposer;
   private post = true;
+  private rays!: ShaderPass;
+  /** Called on heavy impacts in the scenery (for sound). */
+  onRumble: (() => void) | null = null;
   private debris: THREE.InstancedMesh;
   private deb = { p: new Float32Array(48 * 3), v: new Float32Array(48 * 3), life: new Float32Array(48), head: 0 };
   private eul = new THREE.Euler();
@@ -79,6 +82,23 @@ export class World {
     // Post-processing (higher tiers only): soft bloom on bright sources, then a warm/cool grade
     this.composer = new EffectComposer(this.renderer);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
+    // Light shafts: bright sky is smeared away from the sun, so buildings cut visible rays (top tier only)
+    this.rays = new ShaderPass({
+      uniforms: { tDiffuse: { value: null }, sun: { value: new THREE.Vector2(0.4, 0.6) }, amt: { value: 0 } },
+      vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
+      fragmentShader: `uniform sampler2D tDiffuse; uniform vec2 sun; uniform float amt; varying vec2 vUv;
+        void main(){ vec4 base = texture2D(tDiffuse, vUv); vec2 d = sun - vUv; vec2 st = d * (0.9 / 14.0);
+          vec2 uv = vUv + st * fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);
+          vec3 acc = vec3(0.0); float w = 1.0;
+          for (int i = 0; i < 14; i++) { vec3 s = texture2D(tDiffuse, uv).rgb; acc += min(s, vec3(4.0)) * smoothstep(1.35, 2.8, max(s.r, max(s.g, s.b))) * w; w *= 0.94; uv += st; }
+          gl_FragColor = vec4(base.rgb + acc * (amt / 14.0) * (1.0 - smoothstep(0.15, 1.0, length(d))), base.a); }`,
+    });
+    this.composer.addPass(this.rays);
+    this.env.onImpact = (x, z) => {
+      if (z > -45) this.shake = Math.max(this.shake, 0.35);
+      void x;
+      this.onRumble?.();
+    };
     this.composer.addPass(new UnrealBloomPass(new THREE.Vector2(256, 256), 0.32, 0.7, 0.92));
     this.composer.addPass(new OutputPass());
     this.composer.addPass(new ShaderPass({
@@ -171,6 +191,7 @@ export class World {
     this.renderer.setPixelRatio(this.ratios[this.quality]);
     // Lower tiers trade the real-time shadow map for a blob shadow
     this.post = this.quality < 2;
+    this.rays.enabled = this.quality === 0;
     const shadows = this.quality < 2;
     this.env.sun.castShadow = shadows;
     this.shadow.visible = !shadows;
@@ -303,8 +324,11 @@ export class World {
     if (s.dashing)
       for (let i = 0; i < 3; i++)
         this.parts.emit(p.x + (Math.random() - 0.5) * 0.7, p.y + 0.3 + Math.random() * 1.3, 0.2, 0, 0, 0, 0.3, 0.85, 1, 0.35);
-    if (Math.random() < dt * 14)
-      this.parts.emit((Math.random() - 0.5) * 16, 0.5 + Math.random() * 6, -30 - Math.random() * 60, 0, 0.2, 0, 1, 0.8, 0.45, 3.5);
+    // Golden dust hanging in the air, and sand blown across the causeway
+    if (Math.random() < dt * 30)
+      this.parts.emit((Math.random() - 0.5) * 18, 0.5 + Math.random() * 7, -20 - Math.random() * 70, 0.3, 0.15, 0, 0.9, 0.7, 0.38, 3.5);
+    if (Math.random() < dt * 22)
+      this.parts.emit(-6, 0.1 + Math.random() * 0.5, -8 - Math.random() * 45, 3 + Math.random() * 3, 0.2, 0, 0.5, 0.4, 0.26, 2.2);
     this.parts.update(dt, scroll);
     const d = this.deb;
     for (let i = 0; i < 48; i++) {
@@ -340,6 +364,12 @@ export class World {
     if (Math.abs(fov - this.camera.fov) > 0.05) {
       this.camera.fov += (fov - this.camera.fov) * (1 - Math.exp(-dt * 6));
       this.camera.updateProjectionMatrix();
+    }
+    if (this.post && this.rays.enabled) {
+      this.v.copy(SUN_DIR).multiplyScalar(500).add(this.camera.position).project(this.camera);
+      const ahead = this.v.z < 1 && Math.abs(this.v.x) < 1.6 && Math.abs(this.v.y) < 1.6;
+      (this.rays.uniforms.sun.value as THREE.Vector2).set(this.v.x * 0.5 + 0.5, this.v.y * 0.5 + 0.5);
+      this.rays.uniforms.amt.value = ahead ? 0.3 : 0;
     }
     this.renderer.info.reset(); // manual reset so the counters cover every pass of the frame
     if (this.post) this.composer.render();

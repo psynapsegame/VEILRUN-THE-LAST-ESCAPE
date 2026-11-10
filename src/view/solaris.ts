@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { box, glowTexture } from './build';
-import { farBuildings, gateGeometry, sideProps } from './kit';
+import { Banners } from './banners';
+import { Devourer } from './devourer';
+import { Anchor, BRIDGE, GATE_BANNERS, columnGeometry, farBuildings, gateGeometry, sideProps } from './kit';
 import { PAL } from './palette';
 import { SURFACES, Surface, installAtmosphere } from './materials';
 import type { Particles } from './particles';
@@ -10,6 +12,11 @@ import type { Particles } from './particles';
 export const SUN_DIR = new THREE.Vector3(-0.18, 0.2, -1).normalize();
 const SLOT = 14; // metres between roadside props
 const SLOTS = 13;
+
+/** Slots belonging to an open bridge section. */
+function onBridge(k: number): boolean {
+  return ((k % 30) + 30) % 30 >= 22;
+}
 
 function hash(n: number): number {
   let x = Math.imul(n ^ 0x9e3779b9, 0x85ebca6b);
@@ -25,6 +32,12 @@ export class Solaris {
   private curb: Surface;
   private props: THREE.BufferGeometry[];
   private propFire: number[];
+  private propBanners: Anchor[][];
+  private banners = new Banners();
+  private devourer: Devourer;
+  private fallers: { mesh: THREE.Mesh; k: number; side: number; angle: number; vel: number; done: boolean }[] = [];
+  /** Called when a toppling column hits the ground (camera shake, sound). */
+  onImpact: ((x: number, z: number) => void) | null = null;
   private slots: { mesh: THREE.Mesh; k: number; side: number }[] = [];
   private arches: THREE.Mesh[] = [];
   /** Shared materials, indexed by Builder slot: masonry, gold, glowing, plain. */
@@ -152,6 +165,18 @@ export class Solaris {
     const kit = sideProps();
     this.props = kit.geos;
     this.propFire = kit.fire;
+    this.propBanners = kit.banners;
+    this.group.add(this.banners.mesh);
+    this.devourer = new Devourer(this.glow);
+    this.group.add(this.devourer.group);
+    const colGeo = columnGeometry();
+    for (let i = 0; i < 4; i++) {
+      const mesh = new THREE.Mesh(colGeo, this.mats);
+      mesh.castShadow = true;
+      mesh.visible = false;
+      this.group.add(mesh);
+      this.fallers.push({ mesh, k: -1e9, side: 1, angle: 0, vel: 0, done: false });
+    }
     for (let i = 0; i < SLOTS; i++)
       for (const side of [-1, 1]) {
         const mesh = new THREE.Mesh(this.props[0], this.mats);
@@ -182,9 +207,23 @@ export class Solaris {
     scene.add(this.group);
   }
 
+  /** Stand a column on the road-side corner of some city blocks, ready to fall. */
+  private armFaller(k: number, side: number, geo: THREE.BufferGeometry): void {
+    const i = this.props.indexOf(geo);
+    if (i === BRIDGE || i === 7 || hash(k * 13 + side * 7) > 0.2) return;
+    const f = this.fallers.find(x => !x.mesh.visible);
+    if (!f) return;
+    Object.assign(f, { k, side, angle: 0, vel: 0, done: false });
+    f.mesh.visible = true;
+    f.mesh.rotation.x = 0;
+    f.mesh.position.set(side * 6.2, 0, 0);
+  }
+
   /** Recycle props around the runner. No allocation: geometries are shared, meshes reused. */
   update(dist: number, dt: number, parts: Particles): void {
     this.sky.uniforms.time.value += dt;
+    this.banners.begin(dt);
+    this.devourer.update(dt, onBridge(Math.floor(dist / SLOT) + 2));
     this.road.offset.y = (dist / 3) % 1;
     this.terrace.offset.y = (dist / 4) % 1;
     this.curb.offset.x = -((dist * 0.4) % 1);
@@ -208,11 +247,15 @@ export class Solaris {
       if (s.k !== k) {
         s.k = k;
         const h = hash(k * 2 + (s.side > 0 ? 1 : 0));
-        s.mesh.geometry = this.props[Math.floor(h * this.props.length)];
+        // Stretches of open bridge alternate with dense city blocks
+        s.mesh.geometry = this.props[onBridge(k) ? BRIDGE : Math.floor(h * BRIDGE)];
+        s.mesh.userData.banners = this.propBanners[this.props.indexOf(s.mesh.geometry)];
+        this.armFaller(k, s.side, s.mesh.geometry);
         s.mesh.position.x = s.side * 7.9;
         s.mesh.userData.fire = this.propFire[this.props.indexOf(s.mesh.geometry)];
       }
       s.mesh.position.z = dist - k * SLOT;
+      if (s.mesh.position.z > -150) for (const a of s.mesh.userData.banners as Anchor[]) this.banners.add(a, s.mesh.position.x, s.mesh.position.z, -s.side);
       // Braziers: flickering halo and rising embers
       const fire = this.fires[n];
       fire.visible = s.mesh.userData.fire > 0;
@@ -225,7 +268,32 @@ export class Solaris {
     }
     const ARCH = SLOT * 6;
     const ab = Math.floor(dist / ARCH);
-    for (let i = 0; i < this.arches.length; i++) this.arches[i].position.z = dist - (ab + i) * ARCH - SLOT / 2;
+    for (let i = 0; i < this.arches.length; i++) {
+      const z = dist - (ab + i) * ARCH - SLOT / 2;
+      this.arches[i].position.z = z;
+      for (const a of GATE_BANNERS) this.banners.add(a, 0, z, 1);
+    }
+    this.banners.end();
+
+    // Collapse set pieces: a column near the road topples as the runner approaches
+    for (const f of this.fallers) {
+      if (!f.mesh.visible) continue;
+      const z = dist - f.k * SLOT - 5.2;
+      f.mesh.position.z = z;
+      if (z > 30) { f.mesh.visible = false; continue; }
+      if (z > -42 && !f.done) {
+        f.vel += (0.5 + 3.4 * Math.sin(f.angle + 0.06)) * dt;
+        f.angle += f.vel * dt;
+        if (f.angle >= Math.PI / 2 - 0.04) {
+          f.angle = Math.PI / 2 - 0.04;
+          f.done = true;
+          for (let i = 0; i < 26; i++)
+            parts.emit(f.mesh.position.x + (Math.random() - 0.5) * 1.5, 0.3, z + 1 + Math.random() * 6, (Math.random() - 0.5) * 4, 1 + Math.random() * 3, (Math.random() - 0.5) * 3, 0.75, 0.6, 0.42, 1.1, 3);
+          this.onImpact?.(f.mesh.position.x, z);
+        }
+        f.mesh.rotation.x = f.angle; // falls along the road, towards the runner, clear of the lanes
+      }
+    }
   }
 }
 

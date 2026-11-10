@@ -123,7 +123,7 @@ export class GameAudio {
     }
   }
 
-  sfx(name: 'jump' | 'land' | 'slide' | 'lane' | 'coin' | 'dash' | 'smash' | 'death' | 'ready' | 'ui'): void {
+  sfx(name: 'jump' | 'land' | 'slide' | 'lane' | 'coin' | 'dash' | 'smash' | 'death' | 'ready' | 'ui' | 'rumble'): void {
     const c = this.ctx;
     if (!c || c.state !== 'running') return;
     const t = c.currentTime;
@@ -144,6 +144,7 @@ export class GameAudio {
       case 'smash': this.hiss(t, 0.45, 0.7, 500, 0.5, 120); this.tone('sine', 90, 30, t, 0.35, 0.7); break;
       case 'death': this.hiss(t, 0.7, 0.7, 700, 0.5, 80); this.tone('sawtooth', 220, 40, t, 0.8, 0.4); break;
       case 'ready': this.tone('triangle', this.hz(4, 2), this.hz(4, 2), t, 0.12, 0.18); this.tone('triangle', this.hz(7, 2), this.hz(7, 2), t + 0.09, 0.2, 0.18); break;
+      case 'rumble': this.hiss(t, 0.9, 0.35, 260, 0.5, 70); this.tone('sine', 70, 34, t, 0.7, 0.45); break;
       case 'ui': this.tone('triangle', 520, 780, t, 0.09, 0.15); break;
     }
   }

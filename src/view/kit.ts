@@ -118,11 +118,26 @@ function brazier(b: Builder, x: number, z: number): void {
   b.add(new THREE.ConeGeometry(0.75, 1.9, 7), PAL.fire, x, 5.1, z).add(new THREE.ConeGeometry(0.4, 1.3, 6), PAL.ember, x + 0.1, 5.0, z + 0.05);
 }
 
-/** Roadside pieces. `fire[i]` is the flame height of piece i (0 = none). */
-export function sideProps(): { geos: THREE.BufferGeometry[]; fire: number[] } {
+/** Where a cloth banner hangs: top-centre position, size, facing (rotation about Y) and colour index. */
+export type Anchor = [x: number, y: number, z: number, w: number, h: number, ry: number, colour: number];
+const ROAD = Math.PI / 2; // facing the road
+
+/** A free-standing column that can topple (collapse set pieces). */
+export function columnGeometry(): THREE.BufferGeometry {
+  const b = new Builder();
+  column(b, 0, 0, 6.8, 0.55);
+  return b.build();
+}
+
+/** Index of the bridge pier in `sideProps().geos`; the pieces before it are the city blocks. */
+export const BRIDGE = 8;
+
+/** Roadside pieces. `fire[i]` is the flame height of piece i (0 = none), `banners[i]` its cloth anchors. */
+export function sideProps(): { geos: THREE.BufferGeometry[]; fire: number[]; banners: Anchor[][] } {
   const geos: THREE.BufferGeometry[] = [];
   const fire: number[] = [];
-  const push = (b: Builder, f = 0) => { geos.push(b.build()); fire.push(f); };
+  const banners: Anchor[][] = [];
+  const push = (b: Builder, f = 0, a: Anchor[] = []) => { geos.push(b.build()); fire.push(f); banners.push(a); };
 
   { // 0: colonnade in front of a temple wall
     const b = new Builder();
@@ -135,7 +150,7 @@ export function sideProps(): { geos: THREE.BufferGeometry[]; fire: number[] } {
     b.add(box(0.3, 4.6, 2.4), PAL.shadow, -3.12, 2.3, 0).add(box(0.5, 0.5, 3.2), PAL.stoneLight, -3.05, 4.85, 0).add(box(0.52, 0.12, 3.4), PAL.gold, -3.05, 5.16, 0);
     cornice(b, -4.2, 9.3, 0, 2, 9.4);
     b.add(box(3.6, 0.5, 9.6), PAL.stoneDark, -1.9, 8.2, 0); // roof slab between colonnade and wall
-    push(b);
+    push(b, 0, [[1.3, 7.4, -1.8, 1.3, 4.4, ROAD, 2], [1.3, 7.4, 1.8, 1.3, 4.4, ROAD, 2]]);
   }
   { // 1: great brazier flanked by small obelisks
     const b = new Builder();
@@ -146,7 +161,7 @@ export function sideProps(): { geos: THREE.BufferGeometry[]; fire: number[] } {
     b.add(box(0.8, 2.2, 10), PAL.stone, -5.5, 1.1, 0);
     dentils(b, -5.05, 2.0, 0, 9.6, 14);
     cornice(b, -5.5, 2.2, 0, 0.8, 10);
-    push(b, 5.2);
+    push(b, 5.2, [[-5.02, 2.0, -3, 1.2, 1.5, ROAD, 1], [-5.02, 2.0, 3, 1.2, 1.5, ROAD, 1]]);
   }
   { // 2: grand staircase rising to a portico
     const b = new Builder();
@@ -161,7 +176,7 @@ export function sideProps(): { geos: THREE.BufferGeometry[]; fire: number[] } {
     b.add(box(0.3, 4.4, 2.2), PAL.shadow, -8.42, 5.26, 0);
     b.add(new THREE.CylinderGeometry(1.2, 1.2, 0.2, 20), PAL.gold, -8.5, 10.4, 0, 0, 0, Math.PI / 2);
     cornice(b, -9.6, 13.55, 0, 2.2, 9.2);
-    push(b);
+    push(b, 0, [[-8.35, 12.4, -3.3, 1.5, 6.2, ROAD, 0], [-8.35, 12.4, 3.3, 1.5, 6.2, ROAD, 0]]);
   }
   { // 3: tall obelisk before a low sanctuary wall
     const b = new Builder();
@@ -171,7 +186,7 @@ export function sideProps(): { geos: THREE.BufferGeometry[]; fire: number[] } {
     dentils(b, -4.45, 2.75, 0, 9.6, 14);
     cornice(b, -5, 3, 0, 1, 10);
     for (const z of [-3.6, 3.6]) column(b, -2.6, z, 3.4, 0.4);
-    push(b);
+    push(b, 0, [[-4.45, 2.6, 0, 2.2, 2, ROAD, 1]]);
   }
   { // 4: seated colossus
     const b = new Builder();
@@ -212,9 +227,18 @@ export function sideProps(): { geos: THREE.BufferGeometry[]; fire: number[] } {
     cornice(b, -1.5, 13, 0, 4.2, 4.2);
     for (const [px, pz] of [[-3.2, -1.7], [-3.2, 1.7], [0.2, -1.7], [0.2, 1.7]] as const) column(b, px, pz, 3, 0.3, 13.88);
     b.add(frustum(5, 5, 1.6, 0.05), PAL.gold, -1.5, 18, 0);
+    push(b, 0, [[1.05, 12.4, 0, 1.8, 8.5, ROAD, 0]]);
+  }
+  { // 8 (BRIDGE): piers carrying the causeway over the void, with lamp obelisks
+    const b = new Builder();
+    for (const z of [-5, 5]) {
+      b.add(frustum(2.6, 2.6, DEPTH + 0.5, 0.8), PAL.stone, 2.3, (0.5 - DEPTH) / 2, z).add(box(2.5, 0.25, 2.5), PAL.gold, 2.3, 0.62, z);
+      obelisk(b, 2.3, z, 2.8, 0.5, 0.7);
+    }
+    b.add(box(1.5, 1.4, 10), PAL.stoneDark, 2.3, -1.6, 0).add(box(1.7, 0.2, 10), PAL.stoneLight, 2.3, -0.8, 0);
     push(b);
   }
-  return { geos, fire };
+  return { geos, fire, banners };
 }
 
 /** Monumental gateway spanning the road: two battered pylon towers, a lintel and a winged sun. */
@@ -224,8 +248,8 @@ export function gateGeometry(): THREE.BufferGeometry {
     b.add(frustum(5.4, 3.4, DEPTH + 14, 0.8), PAL.stone, s * 8, (14 - DEPTH) / 2, 0);
     cornice(b, s * 8, 14, 0, 4.2, 2.6);
     b.add(box(4.9, 0.4, 3.1), PAL.gold, s * 8, 4.4, 0);
-    b.add(cyl(0.12, 11, 6), PAL.gold, s * 9.6, 16.5, 1.9).add(box(0.06, 3.2, 1.3), PAL.cloth, s * 9.6, 20, 2.6);
-    b.add(box(0.5, 6.5, 0.2), PAL.clothRed, s * 5.75, 6.4, 1.75).add(box(0.8, 0.25, 0.3), PAL.gold, s * 5.75, 9.7, 1.75);
+    b.add(cyl(0.12, 11, 6), PAL.gold, s * 9.6, 16.5, 1.9);
+    b.add(box(1.5, 0.25, 0.3), PAL.gold, s * 5.9, 9.75, 1.8);
   }
   b.add(box(11.6, 2.4, 2.6), PAL.stoneLight, 0, 11.2, 0);
   cornice(b, 0, 12.4, 0, 11.2, 2.4);
@@ -233,6 +257,12 @@ export function gateGeometry(): THREE.BufferGeometry {
   for (const s of [-1, 1]) for (let i = 0; i < 4; i++) b.add(box(1.5, 0.28 - i * 0.03, 0.12), PAL.gold, s * (2 + i * 0.3), 11.5 - i * 0.26, 1.4, 0, 0, s * 0.08);
   return b.build();
 }
+
+/** Cloth on the gateway: long banners on the pylons, pennants on the masts. */
+export const GATE_BANNERS: Anchor[] = [
+  [-5.9, 9.6, 1.85, 1.3, 6.4, 0, 1], [5.9, 9.6, 1.85, 1.3, 6.4, 0, 1],
+  [-10.5, 21.8, 1.9, 1.7, 3.4, 0, 0], [10.5, 21.8, 1.9, 1.7, 3.4, 0, 0],
+];
 
 /** Second-row monuments rising from the city floor (never reached). */
 export function farBuildings(): THREE.BufferGeometry[] {
