@@ -67,7 +67,7 @@ La stratégie complète, les ressources et leurs licences sont dans `docs/STRATE
 |---|---|---|
 | A — Héros | Aventurier encapuchonné aux proportions humaines (Quaternius, CC0), recoloré, animations de sprint, saut, glissade, roulade (dash) et chute | fait, vérifié dans le navigateur |
 | B — Lumière et matière | Éclairage par image de ciel (HDRI), grès et marbre photographiés, or réfléchissant, brume de hauteur dorée vers le soleil, halo lumineux, étalonnage | fait, vérifié dans le navigateur ; performances sur téléphone non mesurées |
-| C — Kit SOLARIS | Architecture monumentale, statues, ponts, obstacles redessinés | à faire |
+| C — Kit SOLARIS | Route en chaussée surélevée au-dessus de la cité ; kit d'architecture (colonnes à chapiteaux, colonnades, temple à grand escalier, pylônes, obélisques, braseros, jardins de palmiers, ruines, tours, colosses provisoires) ; porte monumentale au soleil ailé ; monuments d'arrière-plan ; trois obstacles redessinés | fait, vérifié dans le navigateur. Statues sculptées en attente (voir `docs/MESHY-PROMPTS.md`) ; ponts au-dessus du vide reportés à l'étape D |
 | D — Vie et mise en scène | Tissus, rayons, effondrements, Dévoreur | à faire |
 | E — Performance | Profils graphiques, niveaux de détail, compression, écran de chargement | à faire |
 

@@ -12,7 +12,8 @@ import type { Coin, Row } from '../sim/track';
 import { box, canvasTexture } from './build';
 import { Particles } from './particles';
 import { Runner } from './runner';
-import { PAL, Solaris, obstacleGeometry } from './solaris';
+import { obstacleGeometry } from './kit';
+import { PAL, Solaris } from './solaris';
 
 /** What the renderer needs from a run (the Game satisfies it; so does the menu's idle scene). */
 export interface ViewState {
@@ -67,6 +68,7 @@ export class World {
     this.renderer.setPixelRatio(this.ratios[0]);
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.info.autoReset = false;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 0.8;
     this.env = new Solaris(this.scene);
@@ -125,8 +127,8 @@ export class World {
         const m = new THREE.Mesh(geo, mat);
         m.visible = false;
         m.castShadow = true;
-        if (k === 'high') m.add(halo(PAL.cyan, 0, 2.4, 0.1, 2.6));
-        if (k === 'full') m.add(halo(PAL.violet, 0, 1.75, 0.6, 2.4), halo(PAL.gold, 0, 3.5, 0, 1.6));
+        if (k === 'high') m.add(halo(PAL.cyan, 0, 2.4, 0.1, 1.9));
+        if (k === 'full') m.add(halo(PAL.cyan, 0, 2.86, 0.42, 0.8));
         this.scene.add(m);
         pool.push(m);
       }
@@ -339,6 +341,7 @@ export class World {
       this.camera.fov += (fov - this.camera.fov) * (1 - Math.exp(-dt * 6));
       this.camera.updateProjectionMatrix();
     }
+    this.renderer.info.reset(); // manual reset so the counters cover every pass of the frame
     if (this.post) this.composer.render();
     else this.renderer.render(this.scene, this.camera);
   }

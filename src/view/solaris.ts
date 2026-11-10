@@ -1,31 +1,13 @@
 import * as THREE from 'three';
-import { Builder, box, fluted, glowTexture } from './build';
+import { box, glowTexture } from './build';
+import { farBuildings, gateGeometry, sideProps } from './kit';
+import { PAL } from './palette';
 import { SURFACES, Surface, installAtmosphere } from './materials';
 import type { Particles } from './particles';
-import type { Kind } from '../sim/config';
 
-/** SOLARIS — the golden antique city. Palette, sky, ground, props and obstacle models. */
-export const PAL = {
-  // Masonry tints multiply the photographed sandstone, so they stay close to white.
-  stone: 0xeedfc6,
-  stoneDark: 0xb49a7c,
-  stoneLight: 0xffffff,
-  gold: 0xffc04d,
-  violet: 0x8b5cff,
-  cyan: 0x5fe8ff,
-  fire: 0xff7a2a,
-  fog: 0xc9b4a8,
-  skyTop: 0x16306e,
-  skyMid: 0x5f93cc,
-  sand: 0xc48f58,
-};
-
+/** SOLARIS — the golden antique city: sky, light, causeway and the recycling of kit pieces. */
 /** Where the sun sits in the sky (unit vector from the runner towards it). */
 export const SUN_DIR = new THREE.Vector3(-0.18, 0.2, -1).normalize();
-const GLOW = new Set([PAL.cyan, PAL.violet, PAL.fire, 0xffe08a, 0xfff0b0]);
-const PLAIN = new Set([0x8a5a34, 0x9c6a3e, 0x3f8f4a, 0x56a85a, 0x7a4a2a]);
-Builder.classify = c => (c === PAL.gold ? 1 : GLOW.has(c) ? 2 : PLAIN.has(c) ? 3 : 0);
-
 const SLOT = 14; // metres between roadside props
 const SLOTS = 13;
 
@@ -36,163 +18,13 @@ function hash(n: number): number {
   return ((x ^ (x >>> 16)) >>> 0) / 4294967296;
 }
 
-function sideProps(): THREE.BufferGeometry[] {
-  const cyl = (r: number, h: number, seg = 10) => new THREE.CylinderGeometry(r, r, h, seg);
-  const out: THREE.BufferGeometry[] = [];
-  // Props are modelled for the left side around x = 0 (road edge towards +x).
-  // 0: colonnade — two columns carrying an entablature
-  {
-    const b = new Builder();
-    for (const z of [-3, 3]) {
-      b.add(box(1.5, 0.5, 1.5), PAL.stoneDark, 0, 0.25, z)
-        .add(fluted(0.55, 6), PAL.stoneLight, 0, 3.5, z)
-        .add(cyl(0.6, 0.18), PAL.gold, 0, 1.2, z)
-        .add(cyl(0.52, 0.18), PAL.gold, 0, 5.9, z)
-        .add(box(1.5, 0.45, 1.5), PAL.stone, 0, 6.7, z);
-    }
-    b.add(box(1.7, 0.9, 8.2), PAL.stone, 0, 7.35, 0).add(box(1.9, 0.25, 8.6), PAL.gold, 0, 7.92, 0);
-    out.push(b.build());
-  }
-  // 1: brazier on a pedestal
-  {
-    const b = new Builder();
-    b.add(box(1.6, 1.2, 1.6), PAL.stoneDark, 0, 0.6, 0)
-      .add(fluted(0.35, 1.6), PAL.stone, 0, 2.0, 0)
-      .add(new THREE.CylinderGeometry(0.95, 0.35, 0.6, 10), PAL.gold, 0, 3.1, 0)
-      .add(new THREE.ConeGeometry(0.6, 1.6, 7), PAL.fire, 0, 4.1, 0)
-      .add(new THREE.ConeGeometry(0.32, 1.1, 6), 0xffe08a, 0.1, 4.2, 0.05);
-    out.push(b.build());
-  }
-  // 2: stepped temple with a golden cap, set back from the road
-  {
-    const b = new Builder();
-    for (let i = 0; i < 5; i++) b.add(box(11 - i * 2, 2.2, 11 - i * 2), i % 2 ? PAL.stone : PAL.stoneDark, -7, 1.1 + i * 2.2, 0);
-    b.add(new THREE.ConeGeometry(1.5, 2.4, 4), PAL.gold, -7, 12.2, 0, 0, Math.PI / 4);
-    b.add(box(0.5, 6, 3), PAL.violet, -1.6, 3, 0);
-    out.push(b.build());
-  }
-  // 3: obelisk
-  {
-    const b = new Builder();
-    b.add(box(2, 0.8, 2), PAL.stoneDark, 0, 0.4, 0)
-      .add(new THREE.CylinderGeometry(0.45, 0.8, 9, 4), PAL.stoneLight, 0, 5.3, 0, 0, Math.PI / 4)
-      .add(new THREE.ConeGeometry(0.64, 1.3, 4), PAL.gold, 0, 10.45, 0, 0, Math.PI / 4)
-      .add(box(0.12, 3.5, 0.5), PAL.cyan, 0.52, 4.5, 0);
-    out.push(b.build());
-  }
-  // 4: ruined column and rubble
-  {
-    const b = new Builder();
-    b.add(box(1.5, 0.5, 1.5), PAL.stoneDark, 0, 0.25, 0)
-      .add(fluted(0.55, 2.6), PAL.stoneLight, 0, 1.8, 0)
-      .add(fluted(0.5, 2.4), PAL.stone, -1.4, 0.5, 1.8, 0, 0.4, Math.PI / 2)
-      .add(box(0.9, 0.7, 0.8), PAL.stoneDark, 0.3, 0.35, -1.9, 0.2, 0.5, 0.1)
-      .add(box(0.5, 0.4, 0.6), PAL.stone, -0.8, 0.2, -1.2, 0, 0.9, 0.3);
-    out.push(b.build());
-  }
-  // 5: sun-banner mast
-  {
-    const b = new Builder();
-    b.add(box(1.2, 0.6, 1.2), PAL.stoneDark, 0, 0.3, 0)
-      .add(cyl(0.12, 8, 6), PAL.gold, 0, 4.6, 0)
-      .add(box(0.08, 3.6, 1.5), PAL.violet, 0, 6.2, 0.9)
-      .add(new THREE.TorusGeometry(0.6, 0.12, 6, 14), PAL.gold, 0, 9.2, 0, 0, Math.PI / 2);
-    out.push(b.build());
-  }
-  // 6: palm tree
-  {
-    const b = new Builder();
-    for (let i = 0; i < 6; i++)
-      b.add(new THREE.CylinderGeometry(0.2 - i * 0.012, 0.24 - i * 0.012, 1.25, 7), i % 2 ? 0x8a5a34 : 0x9c6a3e, Math.sin(i * 0.5) * 0.35, 0.6 + i * 1.15, 0, 0, 0, -0.08 * i);
-    for (let i = 0; i < 9; i++) {
-      const a = (i / 9) * Math.PI * 2;
-      b.add(new THREE.ConeGeometry(0.42, 3.4, 4), i % 2 ? 0x3f8f4a : 0x56a85a, 0.9 + Math.cos(a) * 1.35, 6.9 - (i % 3) * 0.18, Math.sin(a) * 1.35, 0, -a, -1.95, [1, 1, 0.18]);
-    }
-    b.add(new THREE.SphereGeometry(0.34, 8, 6), 0x7a4a2a, 0.9, 7.1, 0);
-    out.push(b.build());
-  }
-  return out;
-}
-
-/** Monumental background buildings (second row, never reached). */
-function farBuildings(): THREE.BufferGeometry[] {
-  const out: THREE.BufferGeometry[] = [];
-  {
-    const b = new Builder();
-    for (let i = 0; i < 6; i++) b.add(box(26 - i * 4, 4, 22 - i * 3.4), i % 2 ? PAL.stone : PAL.stoneDark, 0, 2 + i * 4, 0);
-    b.add(new THREE.ConeGeometry(3.4, 5, 4), PAL.gold, 0, 26.5, 0, 0, Math.PI / 4);
-    for (const z of [-5, 0, 5]) b.add(box(0.4, 2.6, 1.4), PAL.cyan, 11.2, 6.2, z);
-    b.add(box(0.5, 9, 4.5), PAL.violet, 13.1, 4.5, 0);
-    out.push(b.build());
-  }
-  {
-    const b = new Builder();
-    b.add(box(16, 14, 16), PAL.stoneDark, 0, 7, 0).add(box(18, 1, 18), PAL.gold, 0, 14.5, 0)
-      .add(new THREE.CylinderGeometry(6, 6.5, 8, 12), PAL.stone, 0, 19, 0)
-      .add(new THREE.SphereGeometry(6.2, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), PAL.gold, 0, 23, 0)
-      .add(new THREE.ConeGeometry(0.7, 5, 6), PAL.stoneLight, 0, 31, 0);
-    for (const z of [-5, 0, 5]) b.add(box(0.4, 5, 2), PAL.cyan, 8.1, 7, z);
-    out.push(b.build());
-  }
-  {
-    const b = new Builder();
-    for (const z of [-8, -4, 0, 4, 8]) b.add(fluted(1.1, 16), PAL.stoneLight, 6, 9, z);
-    b.add(box(16, 1.5, 22), PAL.stoneDark, 0, 0.75, 0).add(box(15, 2.2, 21), PAL.stone, 0, 18.1, 0).add(box(16, 0.6, 22), PAL.gold, 0, 19.5, 0)
-      .add(box(9, 16, 18), PAL.stoneDark, -2, 9, 0);
-    out.push(b.build());
-  }
-  return out;
-}
-
-function archGeometry(): THREE.BufferGeometry {
-  const b = new Builder();
-  for (const s of [-1, 1]) {
-    b.add(box(2.4, 1, 2.6), PAL.stoneDark, s * 6.2, 0.5, 0)
-      .add(box(1.9, 9, 2.1), PAL.stone, s * 6.2, 5.5, 0)
-      .add(box(2.2, 0.4, 2.4), PAL.gold, s * 6.2, 10.2, 0)
-      .add(box(0.2, 5, 0.9), PAL.cyan, s * 5.2, 5.5, 0);
-  }
-  b.add(box(15.6, 1.8, 2.6), PAL.stoneLight, 0, 11.3, 0)
-    .add(box(16.2, 0.4, 3), PAL.gold, 0, 12.4, 0)
-    .add(new THREE.TorusGeometry(1.5, 0.28, 8, 20), PAL.gold, 0, 14.4, 0)
-    .add(new THREE.SphereGeometry(0.9, 12, 8), 0xfff0b0, 0, 14.4, 0);
-  for (const x of [-3.4, 3.4]) b.add(box(1.6, 3.6, 0.1), PAL.violet, x, 8.6, 0).add(box(1.8, 0.2, 0.16), PAL.gold, x, 6.75, 0);
-  return b.build();
-}
-
-/** Obstacle models. Visual extents match the collision volumes in sim/config. */
-export function obstacleGeometry(kind: Kind): THREE.BufferGeometry {
-  const b = new Builder();
-  if (kind === 'low') {
-    // Toppled column drum lying across the lane
-    b.add(new THREE.CylinderGeometry(0.44, 0.44, 1.7, 12), PAL.stoneLight, 0, 0.45, 0, 0, 0, Math.PI / 2);
-    for (const x of [-0.6, 0, 0.6]) b.add(new THREE.CylinderGeometry(0.47, 0.47, 0.1, 12), PAL.gold, x, 0.45, 0, 0, 0, Math.PI / 2);
-    b.add(box(0.5, 0.3, 0.5), PAL.stoneDark, -0.75, 0.15, 0.45, 0, 0.5, 0);
-  } else if (kind === 'high') {
-    // Sun gate: a beam at head height carrying a solar disc; slide beneath it
-    for (const s of [-1, 1]) b.add(box(0.14, 3, 0.3), PAL.stoneDark, s * 0.92, 1.5, 0);
-    b.add(box(2, 0.55, 0.5), PAL.stone, 0, 1.45, 0)
-      .add(box(2, 0.1, 0.56), PAL.gold, 0, 1.2, 0)
-      .add(new THREE.TorusGeometry(0.55, 0.11, 6, 16), PAL.gold, 0, 2.4, 0)
-      .add(new THREE.CylinderGeometry(0.42, 0.42, 0.08, 14), PAL.cyan, 0, 2.4, 0, Math.PI / 2)
-      .add(box(2, 0.14, 0.3), PAL.stoneDark, 0, 3.05, 0);
-  } else {
-    // Guardian pillar: no way through, change lane
-    b.add(box(1.7, 0.5, 1), PAL.stoneDark, 0, 0.25, 0)
-      .add(new THREE.CylinderGeometry(0.5, 0.78, 2.4, 4), PAL.stone, 0, 1.7, 0, 0, Math.PI / 4)
-      .add(box(0.5, 1.1, 0.08), PAL.violet, 0, 1.75, 0.5)
-      .add(new THREE.ConeGeometry(0.72, 0.9, 4), PAL.gold, 0, 3.3, 0, 0, Math.PI / 4)
-      .add(box(1.3, 0.14, 0.9), PAL.gold, 0, 0.57, 0);
-  }
-  return b.build();
-}
-
 export class Solaris {
   readonly group = new THREE.Group();
   private road: Surface;
   private terrace: Surface;
   private curb: Surface;
   private props: THREE.BufferGeometry[];
+  private propFire: number[];
   private slots: { mesh: THREE.Mesh; k: number; side: number }[] = [];
   private arches: THREE.Mesh[] = [];
   /** Shared materials, indexed by Builder slot: masonry, gold, glowing, plain. */
@@ -286,7 +118,7 @@ export class Solaris {
     const sand = new THREE.Mesh(new THREE.PlaneGeometry(500, 500), this.terrace.material);
     sand.receiveShadow = true;
     sand.rotation.x = -Math.PI / 2;
-    sand.position.set(0, -0.6, -150);
+    sand.position.set(0, -8, -150);
     this.group.add(sand);
     this.curb = SURFACES.rough();
     for (const s of [-1, 1]) {
@@ -297,6 +129,13 @@ export class Solaris {
       curb.position.set(s * 4.35, -0.1, -100);
       curb.castShadow = curb.receiveShadow = true;
       this.group.add(curb);
+      // Retaining wall: the road is a causeway raised above the city floor
+      const wg = box(1, 8, 240);
+      const WP = wg.attributes.position, wuv = wg.attributes.uv;
+      for (let i = 0; i < WP.count; i++) wuv.setXY(i, WP.getZ(i) * 0.4, (WP.getX(i) + WP.getY(i)) * 0.4);
+      const wall = new THREE.Mesh(wg, this.curb.material);
+      wall.position.set(s * 4.5, -4.5, -100);
+      this.group.add(wall);
     }
 
     // Far skyline: hazy pyramids that never get closer
@@ -310,7 +149,9 @@ export class Solaris {
       this.group.add(p);
     }
 
-    this.props = sideProps();
+    const kit = sideProps();
+    this.props = kit.geos;
+    this.propFire = kit.fire;
     for (let i = 0; i < SLOTS; i++)
       for (const side of [-1, 1]) {
         const mesh = new THREE.Mesh(this.props[0], this.mats);
@@ -332,7 +173,7 @@ export class Solaris {
         this.group.add(mesh);
         this.farSlots.push({ mesh, k: -1e9, side });
       }
-    const arch = archGeometry();
+    const arch = gateGeometry();
     for (let i = 0; i < 3; i++) {
       const m = new THREE.Mesh(arch, this.mats);
       this.group.add(m);
@@ -356,7 +197,7 @@ export class Solaris {
         s.k = k;
         const h = hash(k * 2 + 77 + (s.side > 0 ? 1 : 0));
         s.mesh.geometry = this.far[Math.floor(h * this.far.length)];
-        s.mesh.position.x = s.side * (30 + h * 10);
+        s.mesh.position.x = s.side * (38 + h * 12);
       }
       s.mesh.position.z = dist - k * FAR - 9;
     }
@@ -368,18 +209,18 @@ export class Solaris {
         s.k = k;
         const h = hash(k * 2 + (s.side > 0 ? 1 : 0));
         s.mesh.geometry = this.props[Math.floor(h * this.props.length)];
-        s.mesh.position.x = s.side * (6.4 + hash(k * 31 + s.side) * 1.5);
-        s.mesh.userData.fire = s.mesh.geometry === this.props[1];
+        s.mesh.position.x = s.side * 7.9;
+        s.mesh.userData.fire = this.propFire[this.props.indexOf(s.mesh.geometry)];
       }
       s.mesh.position.z = dist - k * SLOT;
       // Braziers: flickering halo and rising embers
       const fire = this.fires[n];
-      fire.visible = s.mesh.userData.fire;
+      fire.visible = s.mesh.userData.fire > 0;
       if (fire.visible) {
-        fire.position.set(s.mesh.position.x, 4.2, s.mesh.position.z);
+        fire.position.set(s.mesh.position.x, s.mesh.userData.fire, s.mesh.position.z);
         fire.scale.setScalar(4.4 + Math.sin(dist * 0.9 + n) * 0.5 + Math.random() * 0.5);
         if (s.mesh.position.z > -90 && Math.random() < dt * 14)
-          parts.emit(fire.position.x + (Math.random() - 0.5) * 0.6, 4, fire.position.z, (Math.random() - 0.5) * 0.6, 1.5 + Math.random() * 2, 0, 1, 0.5, 0.15, 0.9);
+          parts.emit(fire.position.x + (Math.random() - 0.5) * 0.6, fire.position.y, fire.position.z, (Math.random() - 0.5) * 0.6, 1.5 + Math.random() * 2, 0, 1, 0.5, 0.15, 0.9);
       }
     }
     const ARCH = SLOT * 6;
@@ -387,3 +228,5 @@ export class Solaris {
     for (let i = 0; i < this.arches.length; i++) this.arches[i].position.z = dist - (ab + i) * ARCH - SLOT / 2;
   }
 }
+
+export { PAL };
