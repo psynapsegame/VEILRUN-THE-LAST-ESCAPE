@@ -146,7 +146,8 @@ export class Ui {
       l.until = g.time + 2.6;
       l.msg = `${fmt(mile * 500)} M  ·  ${Math.round(speedAt(g.dist) * 3.6)} KM/H`;
     }
-    const tip = g.time < 2.2 ? '← GLISSE →' : g.time < 4.4 ? '↑ SAUTER   ·   ↓ GLISSER' : g.time < 6.6 ? 'DOUBLE-TAP : DASH' : performance.now() < this.announceUntil ? this.announceText : g.time < l.until ? l.msg : '';
+    // A world announcement comes before the tutorial hints and the milestones
+    const tip = performance.now() < this.announceUntil ? this.announceText : g.time < 2.2 ? '← GLISSE →' : g.time < 4.4 ? '↑ SAUTER   ·   ↓ GLISSER' : g.time < 6.6 ? 'DOUBLE-TAP : DASH' : g.time < l.until ? l.msg : '';
     if (tip !== l.tip) {
       this.el.tip.textContent = l.tip = tip;
     }
