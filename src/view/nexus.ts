@@ -264,6 +264,8 @@ export class Nexus {
   readonly group = new THREE.Group();
   /** Every light of this world (switched off when the other world is on). */
   readonly lights: THREE.Light[] = [];
+  /** Cyan light that follows the hero so he stands out against the night. */
+  readonly rim = new THREE.PointLight(0x66e8ff, 60, 11, 2);
   /** Materials indexed by Builder slot: windowed facade, trim metal, neon, plain dark, holographic panel. */
   readonly mats: THREE.Material[];
   readonly fog = new THREE.FogExp2(0x1b1038, 0.0042);
@@ -296,7 +298,7 @@ export class Nexus {
     key.position.set(-8, 10, 8);
     const fill = new THREE.DirectionalLight(0xff40d0, 0.9);
     fill.position.set(8, 5, 6);
-    this.lights.push(hemi, key, fill);
+    this.lights.push(hemi, key, fill, this.rim);
     for (const l of this.lights) { l.visible = false; scene.add(l); }
 
     // Sky: dark gradient, stars, a banded planet with a ring, a neon glow along the horizon ahead

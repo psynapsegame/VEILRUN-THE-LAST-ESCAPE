@@ -402,7 +402,7 @@ export class World {
     const rise = Math.min(1, Math.max(0, (rel + 12) / 12));
     const fall = Math.min(1, Math.max(0, rel / 18));
     this.flash = rel < 0 ? rise * rise : 1 - Math.pow(fall * fall * (3 - 2 * fall), 0.7);
-    this.portal.update(-rel, worldAt(P + 1), this.t);
+    this.portal.update(rel, worldAt(P + 1), this.t); // scene z = distance run - position on the road
     if (this.worldIdx === 0) this.env.update(s.dist, dt, this.parts);
     else this.nexus.update(s.dist, dt);
 
@@ -456,6 +456,7 @@ export class World {
     if (this.worldIdx === 0) this.env.updateGaps(s.track.rows, s.dist);
     else this.nexus.updateGaps(s.track.rows, s.dist);
     this.shadow.position.x = p.x;
+    this.nexus.rim.position.set(p.x, 2.6, 2.2); // a cold light that follows the hero: dark on a dark road otherwise
     const sh = 1 / (1 + p.y * 0.7);
     this.shadow.scale.setScalar(sh);
 
