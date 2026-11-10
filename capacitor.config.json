@@ -1,0 +1,7 @@
+{
+  "appId": "com.psynapse.veilrun",
+  "appName": "VEILRUN",
+  "webDir": "dist",
+  "backgroundColor": "#07060b",
+  "android": { "allowMixedContent": false }
+}
