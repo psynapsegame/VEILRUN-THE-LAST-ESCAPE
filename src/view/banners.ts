@@ -1,10 +1,12 @@
 import * as THREE from 'three';
+import bannersUrl from '../assets/art/banners.webp';
 import type { Anchor } from './kit';
+import { loadTexture } from './loading';
 
-const COLOURS = [0x6f3cc4, 0xb5432e, 0x1f9a94]; // violet, red, teal
 const MAX = 96;
+const TILES = 3; // violet sun, crimson eye, turquoise winged disc
 
-/** Every cloth banner of the scene in one instanced draw call, waving in a vertex shader. */
+/** Every cloth banner of the scene in one instanced draw call: embroidered cloth waving in a vertex shader. */
 export class Banners {
   readonly mesh: THREE.InstancedMesh;
   private time = { value: 0 };
@@ -14,7 +16,8 @@ export class Banners {
   private p = new THREE.Vector3();
   private s = new THREE.Vector3();
   private up = new THREE.Vector3(0, 1, 0);
-  private col = COLOURS.map(c => new THREE.Color(c));
+  private tile = new Float32Array(MAX);
+  private tileAttr: THREE.InstancedBufferAttribute;
 
   constructor() {
     const geo = new THREE.PlaneGeometry(1, 1, 3, 9);
@@ -22,21 +25,26 @@ export class Banners {
     const phase = new Float32Array(MAX);
     for (let i = 0; i < MAX; i++) phase[i] = Math.random() * 6.283;
     geo.setAttribute('aPhase', new THREE.InstancedBufferAttribute(phase, 1));
-    const mat = new THREE.MeshStandardMaterial({ side: THREE.DoubleSide, roughness: 0.9 });
+    this.tileAttr = new THREE.InstancedBufferAttribute(this.tile, 1);
+    this.tileAttr.setUsage(THREE.DynamicDrawUsage);
+    geo.setAttribute('aTile', this.tileAttr);
+    const map = loadTexture(bannersUrl);
+    map.anisotropy = 4;
+    // A little self-light keeps the dyes vivid when the cloth hangs in shade
+    const mat = new THREE.MeshStandardMaterial({ map, emissiveMap: map, emissive: 0xffffff, emissiveIntensity: 0.32, side: THREE.DoubleSide, roughness: 0.9, alphaTest: 0.5 });
     mat.onBeforeCompile = sh => {
       sh.uniforms.uTime = this.time;
       sh.vertexShader = sh.vertexShader
-        .replace('#include <common>', '#include <common>\nuniform float uTime;\nattribute float aPhase;')
+        .replace('#include <common>', '#include <common>\nuniform float uTime;\nattribute float aPhase;\nattribute float aTile;')
+        .replace('#include <uv_vertex>', `#include <uv_vertex>
+          vMapUv = vec2(vMapUv.x / ${TILES}.0 + aTile / ${TILES}.0, vMapUv.y);`)
         .replace('#include <begin_vertex>', `#include <begin_vertex>
           float wg = -position.y;                       // 0 at the pole, 1 at the free edge
           float wv = sin(uTime * 2.4 + aPhase + wg * 4.5) + 0.5 * sin(uTime * 4.1 + aPhase * 1.7 + wg * 8.0);
           transformed.z += wv * 0.5 * wg * wg / max(length(instanceMatrix[1].xyz) * 0.25, 1.0) + 0.25 * wg * wg;
-          transformed.x += sin(uTime * 1.6 + aPhase * 1.3 + wg * 3.0) * 0.05 * wg;
-          // Gold hem and border stripes
-          vColor.rgb = mix(vColor.rgb, vec3(1.0, 0.72, 0.25), step(0.9, wg) * 0.9 + step(0.42, abs(position.x)) * 0.9);`);
+          transformed.x += sin(uTime * 1.6 + aPhase * 1.3 + wg * 3.0) * 0.05 * wg;`);
     };
     this.mesh = new THREE.InstancedMesh(geo, mat, MAX);
-    this.mesh.setColorAt(0, this.col[0]); // allocate per-instance colours before the first compile
     this.mesh.frustumCulled = false;
     this.mesh.count = 0;
   }
@@ -52,13 +60,13 @@ export class Banners {
     this.q.setFromAxisAngle(this.up, a[5] * mirror);
     this.m.compose(this.p.set(ox + a[0] * mirror, a[1], oz + a[2]), this.q, this.s.set(a[3], a[4], 1));
     this.mesh.setMatrixAt(this.n, this.m);
-    this.mesh.setColorAt(this.n, this.col[a[6]]);
+    this.tile[this.n] = a[6];
     this.n++;
   }
 
   end(): void {
     this.mesh.count = this.n;
     this.mesh.instanceMatrix.needsUpdate = true;
-    if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
+    this.tileAttr.needsUpdate = true;
   }
 }

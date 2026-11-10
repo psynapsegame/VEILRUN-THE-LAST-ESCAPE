@@ -57,5 +57,13 @@ font-family:var(--display)!important;font-size:11px!important;letter-spacing:.14
 .vr-tip{position:absolute;left:0;right:0;top:30%;text-align:center;font-family:var(--display);font-size:clamp(17px,5.4vw,26px);letter-spacing:.22em;color:var(--text);
 text-shadow:0 0 16px rgba(154,107,255,.9),0 2px 8px rgba(7,6,11,.9);pointer-events:none;transition:opacity .3s}
 .vr-debug{position:absolute;left:max(8px,env(safe-area-inset-left,0px));top:calc(96px + env(safe-area-inset-top,0px));font:11px/1.35 ui-monospace,Menlo,monospace;color:var(--cyan);background:rgba(7,6,11,.7);padding:6px 8px;white-space:pre;pointer-events:none}
+/* Loading screen */
+.vr-splash{position:absolute;inset:0;z-index:60;background:#07060b center 32%/cover no-repeat;display:flex;flex-direction:column;align-items:center;text-align:center;
+padding:calc(11% + env(safe-area-inset-top,0px)) 16px 0;transition:opacity .8s ease}
+.vr-splash::before{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(7,6,11,.78),rgba(7,6,11,.1) 36%,rgba(7,6,11,0) 66%,rgba(7,6,11,.8))}
+.vr-splash.out{opacity:0;pointer-events:none}
+.vr-splash-head{position:relative}
+.vr-load{position:absolute;left:16%;right:16%;bottom:calc(7% + env(safe-area-inset-bottom,0px));height:3px;border-radius:2px;background:rgba(244,236,220,.22);overflow:hidden}
+.vr-load i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--gold2),var(--gold));box-shadow:0 0 10px var(--gold);transition:width .3s ease}
 @media (prefers-reduced-motion:reduce){.vr-veil,.vr-record{animation:none}}
 `;

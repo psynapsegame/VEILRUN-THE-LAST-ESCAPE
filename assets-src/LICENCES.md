@@ -11,6 +11,15 @@ Toute ressource non créée pour VEILRUN est listée ici avec sa licence. Les te
 | HDRI « Rogland Sunset » | Greg Zaal (Poly Haven) | CC0 1.0 | Non | polyhaven.com/a/rogland_sunset | Éclairage d'environnement (`src/assets/solaris/sky.hdr`) |
 
 Licence Poly Haven relue le 10/11/2026 via leur API publique : tous les assets sont en CC0.
+| Statues « Colosse » et « Sphinx » (`assets-src/Colosse.glb`, `Sphinx.glb`) | Générées avec Meshy par le porteur du projet, d'après des images de référence Gemini, le 10/11/2026 | Conditions de Meshy applicables au plan payant du porteur du projet | À confirmer (voir ci-dessous) | meshy.ai | Statues monumentales (`src/assets/statues/*.glb`) |
+| Images de décor : fresque, frise, 3 motifs de bannières, panorama, Dévoreur, icône, illustration de titre (`assets-src/gemini/*.jpg`) | Générées avec Gemini par le porteur du projet, le 10/11/2026 | Conditions des applications Gemini (usage commercial, responsabilité de l'utilisateur) | À confirmer (voir ci-dessous) | gemini.google.com | Fresques et frises sur les murs, bannières, ciel lointain, Dévoreur, icônes, écran de démarrage (`src/assets/art/*.webp`, icônes Android et web) |
+
+**À vérifier par le porteur du projet avant toute publication commerciale**
+- Meshy : la licence dépend du plan au moment de la génération (la documentation indique que les modèles faits avec le plan gratuit sont en CC BY 4.0, avec crédit obligatoire). Confirmer que les modèles ont été générés après la prise d'abonnement, conserver la facture et une capture des conditions en vigueur. Si l'un d'eux date du plan gratuit, il faudra créditer Meshy dans le jeu.
+- Gemini : relire les conditions des applications Gemini pour l'abonnement utilisé (droits d'usage commercial, absence de garantie contre les ressemblances avec des œuvres existantes). Les images portent un filigrane invisible (SynthID) qu'il ne faut pas chercher à retirer.
+- Aucune de ces ressources ne doit reproduire un personnage, un lieu ou un style protégé : les descriptions fournies à Meshy et Gemini n'en citent aucun.
 
 `src/assets/solaris/` est produit par `tools/fetch-solaris.mjs` (téléchargement, réduction, conversion).
+`src/assets/statues/` est produit par `tools/build-statue.mjs` (allègement à 7 000–9 000 triangles, textures 1 024 px).
+`src/assets/art/` est produit par `tools/build-art.mjs`, les icônes par `tools/build-icons.mjs`.
 `src/assets/hero.glb` est produit par `tools/build-hero.mjs` à partir de ces sources (simplification, textures 1024 px en WebP, fusion des animations).

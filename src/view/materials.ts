@@ -10,8 +10,8 @@ import roadD from '../assets/solaris/road_diff.webp';
 import roadN from '../assets/solaris/road_nor.webp';
 import roadA from '../assets/solaris/road_arm.webp';
 import skyHdr from '../assets/solaris/sky.hdr';
+import { loadTexture, loading } from './loading';
 
-const loader = new THREE.TextureLoader();
 
 /** One photographed PBR surface: colour, normal and AO/roughness maps sharing a UV transform. */
 export class Surface {
@@ -21,9 +21,8 @@ export class Surface {
 
   constructor(diff: string, nor: string, arm: string, opts: THREE.MeshStandardMaterialParameters = {}) {
     const load = (url: string, srgb: boolean) => {
-      const t = loader.load(url);
+      const t = loadTexture(url, srgb);
       t.wrapS = t.wrapT = THREE.RepeatWrapping;
-      if (srgb) t.colorSpace = THREE.SRGBColorSpace;
       t.anisotropy = 4;
       t.offset = this.offset;
       t.repeat = this.repeat;
@@ -45,7 +44,11 @@ export const SURFACES = {
 };
 
 /** Image-based lighting from the prepared HDRI (the sun is already turned to face the runner). */
-export async function loadEnvironment(renderer: THREE.WebGLRenderer): Promise<THREE.Texture> {
+export function loadEnvironment(renderer: THREE.WebGLRenderer): Promise<THREE.Texture> {
+  return loading.track(buildEnvironment(renderer));
+}
+
+async function buildEnvironment(renderer: THREE.WebGLRenderer): Promise<THREE.Texture> {
   const buf =
     typeof skyHdr === 'string'
       ? await (await fetch(skyHdr)).arrayBuffer()

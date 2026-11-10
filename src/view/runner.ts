@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { loadGlb } from './glb';
+import { loading } from './loading';
 import type { PlayerState } from '../sim/player';
 import asset from '../assets/hero.glb';
 
@@ -76,12 +77,12 @@ export class Runner {
     return !!this.mixer;
   }
 
-  async load(): Promise<void> {
-    const buf =
-      typeof asset === 'string'
-        ? await (await fetch(asset)).arrayBuffer()
-        : (asset.buffer.slice(asset.byteOffset, asset.byteOffset + asset.byteLength) as ArrayBuffer);
-    const gltf = await new GLTFLoader().parseAsync(buf, '');
+  load(): Promise<void> {
+    return loading.track(this.build());
+  }
+
+  private async build(): Promise<void> {
+    const gltf = await loadGlb(asset);
     const model = gltf.scene;
     model.rotation.y = Math.PI; // the model faces +Z, the runner runs towards -Z
     model.scale.setScalar(0.95);

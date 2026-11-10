@@ -36,6 +36,8 @@ export class World {
   private runner = new Runner();
   private composer: EffectComposer;
   private post = true;
+  /** Quality-control camera [x, y, z, lookX, lookY, lookZ, fov]; null in play. Set only by automated tests. */
+  freeCam: number[] | null = null;
   private rays!: ShaderPass;
   /** Called on heavy impacts in the scenery (for sound). */
   onRumble: (() => void) | null = null;
@@ -363,6 +365,13 @@ export class World {
     const fov = this.baseFov + speedF * 7 + this.fovKick * 9 + (s.dashing ? 5 : 0);
     if (Math.abs(fov - this.camera.fov) > 0.05) {
       this.camera.fov += (fov - this.camera.fov) * (1 - Math.exp(-dt * 6));
+      this.camera.updateProjectionMatrix();
+    }
+    if (this.freeCam) {
+      const f = this.freeCam;
+      this.camera.position.set(f[0], f[1], f[2]);
+      this.camera.lookAt(f[3], f[4], f[5]);
+      this.camera.fov = f[6];
       this.camera.updateProjectionMatrix();
     }
     if (this.post && this.rays.enabled) {

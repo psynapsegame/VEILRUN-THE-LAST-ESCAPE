@@ -1,9 +1,10 @@
 import { CFG } from '../sim/config';
 import type { Game } from '../sim/game';
 import type { SaveData } from '../save';
+import titleUrl from '../assets/art/title.webp';
 import { CSS } from './style';
 
-export const VERSION = '0.6.0';
+export const VERSION = '0.7.0';
 const fmt = (n: number) => Math.floor(n).toLocaleString('fr-FR');
 
 export interface UiHandlers {
@@ -64,13 +65,18 @@ export class Ui {
   <button class="vr-btn" data-a="play">REJOUER</button>
   <button class="vr-btn ghost" data-a="menu">MENU</button>
 </section>
-<div class="vr-debug" data-e="debug" hidden></div>`;
+<div class="vr-debug" data-e="debug" hidden></div>
+<section class="vr-splash" data-e="splash" aria-label="Chargement">
+  <div class="vr-splash-head"><h1 class="vr-title">VEILRUN</h1><p class="vr-sub">THE LAST ESCAPE</p></div>
+  <div class="vr-load"><i data-e="loadbar"></i></div>
+</section>`;
     document.body.appendChild(this.root);
     this.canvas = this.root.querySelector('canvas')!;
     const L = (n: string) => this.root.querySelector<HTMLElement>(`[data-l="${n}"]`)!;
     this.layers = { menu: L('menu'), hud: L('hud'), pause: L('pause'), over: L('over') };
     this.root.querySelectorAll<HTMLElement>('[data-e]').forEach(e => (this.el[e.dataset.e!] = e));
     this.ring = this.root.querySelector<SVGCircleElement>('.vr-dash .fg')!;
+    this.el.splash.style.backgroundImage = `url(${titleUrl})`;
     const muteBtn = this.root.querySelector<HTMLElement>('[data-a="mute"]')!;
     const setMute = (m: boolean) => (muteBtn.textContent = m ? '🔇' : '🔊');
     setMute(muted);
@@ -82,6 +88,16 @@ export class Ui {
     });
     // Buttons must never leak into the gesture surface.
     this.root.querySelectorAll('button').forEach(b => b.addEventListener('pointerdown', e => e.stopPropagation()));
+  }
+
+  /** Loading screen: real progress (0..1) of the assets the scene is waiting for. */
+  splashProgress(p: number): void {
+    this.el.loadbar.style.width = `${Math.round(p * 100)}%`;
+  }
+  hideSplash(): void {
+    const s = this.el.splash;
+    s.classList.add('out');
+    setTimeout(() => (s.hidden = true), 900);
   }
 
   show(name: 'menu' | 'hud' | 'pause' | 'over'): void {

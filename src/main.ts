@@ -5,6 +5,7 @@ import { CFG } from './sim/config';
 import { Game } from './sim/game';
 import { Action, Player } from './sim/player';
 import { Ui } from './ui/ui';
+import { loading } from './view/loading';
 import { ViewState, World } from './view/world';
 
 type Mode = 'menu' | 'run' | 'pause' | 'dying' | 'over';
@@ -21,6 +22,8 @@ let game: Game | null = null;
 let acc = 0;
 let dyingT = 0;
 let debugOn = /[?&]debug/.test(location.search);
+const t0 = performance.now();
+let splashDone = /[?&]nosplash/.test(location.search); // ?nosplash: skip the loading screen (automated tests)
 const idle: ViewState = { dist: 0, speed: 9, player: new Player(), dashing: false, track: { rows: [], coins: [] } };
 
 const ui = new Ui(
@@ -38,6 +41,7 @@ const ui = new Ui(
 const world = new World(ui.canvas);
 world.onRumble = () => audio.sfx('rumble');
 ui.menu(save);
+if (splashDone) ui.hideSplash();
 
 function start(): void {
   game = new Game((Math.random() * 2 ** 31) | 0);
@@ -118,6 +122,14 @@ function frame(now: number): void {
   const ms = now - last;
   last = now;
   const dt = Math.min(0.1, ms / 1000);
+  if (!splashDone) {
+    ui.splashProgress(loading.progress);
+    const waited = performance.now() - t0;
+    if ((loading.complete && waited > 1600) || waited > 20000) {
+      splashDone = true;
+      ui.hideSplash();
+    }
+  }
   if (mode === 'pause') return;
   monitor(ms, dt);
 

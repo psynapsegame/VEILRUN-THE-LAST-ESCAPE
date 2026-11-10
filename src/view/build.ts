@@ -2,13 +2,13 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 /** Builds one static mesh geometry out of coloured primitives (one draw call per prop). */
-/** Material slots of a built prop: 0 masonry, 1 gold, 2 glowing, 3 plain (plants, wood). */
-export type Slot = 0 | 1 | 2 | 3;
+/** Material slots of a built prop: 0 masonry, 1 gold, 2 glowing, 3 plain (plants, wood), 4 painted panels. */
+export type Slot = 0 | 1 | 2 | 3 | 4;
 
 export class Builder {
   /** Decides which material slot a palette colour belongs to. */
   static classify: (color: number) => Slot = () => 0;
-  private parts: THREE.BufferGeometry[][] = [[], [], [], []];
+  private parts: THREE.BufferGeometry[][] = [[], [], [], [], []];
   private m = new THREE.Matrix4();
   private q = new THREE.Quaternion();
   private e = new THREE.Euler();
@@ -42,6 +42,21 @@ export class Builder {
     return this;
   }
 
+  /**
+   * Flat painted panel facing +x (towards the road), centred at (x, y, z), `w` long along z and `h` high.
+   * `uv` is the rectangle [u0, v0, u1, v1] of the decal sheet it shows.
+   */
+  panel(x: number, y: number, z: number, w: number, h: number, uv: readonly [number, number, number, number]): this {
+    const g = new THREE.PlaneGeometry(w, h).toNonIndexed();
+    const t = g.attributes.uv;
+    for (let i = 0; i < t.count; i++) t.setXY(i, uv[0] + t.getX(i) * (uv[2] - uv[0]), uv[1] + t.getY(i) * (uv[3] - uv[1]));
+    g.rotateY(Math.PI / 2);
+    g.translate(x, y, z);
+    g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count * 3).fill(1), 3));
+    this.parts[4].push(g);
+    return this;
+  }
+
   build(): THREE.BufferGeometry {
     const slots: number[] = [];
     const merged: THREE.BufferGeometry[] = [];
@@ -53,7 +68,7 @@ export class Builder {
     });
     const g = mergeGeometries(merged, true)!;
     g.groups.forEach((grp, i) => (grp.materialIndex = slots[i]));
-    this.parts = [[], [], [], []];
+    this.parts = [[], [], [], [], []];
     g.computeBoundingSphere();
     return g;
   }

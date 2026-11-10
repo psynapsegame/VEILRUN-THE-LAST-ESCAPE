@@ -2,7 +2,11 @@ import * as THREE from 'three';
 import { box, glowTexture } from './build';
 import { Banners } from './banners';
 import { Devourer } from './devourer';
-import { Anchor, BRIDGE, GATE_BANNERS, columnGeometry, farBuildings, gateGeometry, sideProps } from './kit';
+import frescoesUrl from '../assets/art/frescoes.webp';
+import panoramaUrl from '../assets/art/panorama.webp';
+import { Anchor, BRIDGE, GATE_BANNERS, NO_COLLAPSE, STATUES, columnGeometry, farBuildings, gateGeometry, sideProps } from './kit';
+import { loadTexture } from './loading';
+import { Statues, loadStatues } from './statues';
 import { PAL } from './palette';
 import { SURFACES, Surface, installAtmosphere } from './materials';
 import type { Particles } from './particles';
@@ -12,6 +16,8 @@ import type { Particles } from './particles';
 export const SUN_DIR = new THREE.Vector3(-0.18, 0.2, -1).normalize();
 const SLOT = 14; // metres between roadside props
 const SLOTS = 13;
+/** Which far buildings appear, weighted: the giant colossus is rarer than the rest. */
+const FAR_PICK = [0, 1, 2, 3, 0, 1, 3];
 
 /** Slots belonging to an open bridge section. */
 function onBridge(k: number): boolean {
@@ -38,9 +44,9 @@ export class Solaris {
   private fallers: { mesh: THREE.Mesh; k: number; side: number; angle: number; vel: number; done: boolean }[] = [];
   /** Called when a toppling column hits the ground (camera shake, sound). */
   onImpact: ((x: number, z: number) => void) | null = null;
-  private slots: { mesh: THREE.Mesh; k: number; side: number }[] = [];
+  private slots: { mesh: THREE.Mesh; k: number; side: number; statues: Map<number, THREE.Mesh> }[] = [];
   private arches: THREE.Mesh[] = [];
-  /** Shared materials, indexed by Builder slot: masonry, gold, glowing, plain. */
+  /** Shared materials, indexed by Builder slot: masonry, gold, glowing, plain, painted panels. */
   readonly mats: THREE.Material[];
   readonly wall: Surface;
   /** Rough-hewn stone (curbs, rubble). */
@@ -51,7 +57,7 @@ export class Solaris {
   readonly glow = glowTexture();
   private sky: THREE.ShaderMaterial;
   private far: THREE.BufferGeometry[];
-  private farSlots: { mesh: THREE.Mesh; k: number; side: number }[] = [];
+  private farSlots: { mesh: THREE.Mesh; k: number; side: number; statues: Map<number, THREE.Mesh> }[] = [];
   private fires: THREE.Sprite[] = [];
 
   constructor(scene: THREE.Scene) {
@@ -64,6 +70,12 @@ export class Solaris {
       new THREE.MeshStandardMaterial({ metalness: 1, roughness: 0.3, vertexColors: true, envMapIntensity: 1.3 }),
       new THREE.MeshBasicMaterial({ vertexColors: true, color: new THREE.Color(1.5, 1.5, 1.5) }),
       new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 }),
+      (() => {
+        // Mural and carved frieze: the picture is its own relief, so it doubles as a bump map
+        const map = loadTexture(frescoesUrl);
+        map.anisotropy = 4;
+        return new THREE.MeshStandardMaterial({ map, bumpMap: map, bumpScale: 1.6, roughness: 0.92 });
+      })(),
     ];
     // The environment map provides the ambient light; the hemisphere only lifts the shadows a little.
     scene.add(new THREE.HemisphereLight(0xcfe0ff, 0x8a6a4a, 0.35));
@@ -151,16 +163,14 @@ export class Solaris {
       this.group.add(wall);
     }
 
-    // Far skyline: hazy pyramids that never get closer
-    const haze = new THREE.MeshBasicMaterial({ color: 0xb9a7a4, fog: false });
-    const haze2 = new THREE.MeshBasicMaterial({ color: 0xcdb7a6, fog: false });
-    const spots: [number, number, number, number][] = [[-110, -300, 70, 0], [95, -330, 95, 1], [-30, -360, 55, 1], [170, -280, 50, 0], [-200, -310, 60, 1]];
-    for (const [x, z, h, m] of spots) {
-      const p = new THREE.Mesh(new THREE.ConeGeometry(h * 0.85, h, 4), m ? haze2 : haze);
-      p.position.set(x, h / 2 - 2, z);
-      p.rotation.y = Math.PI / 4;
-      this.group.add(p);
-    }
+    // Distant city: a painted panorama far beyond the playfield, faded into the sky at the top and sides.
+    // Its low sun sits near the real one (the left of the picture).
+    const pano = new THREE.Mesh(
+      new THREE.PlaneGeometry(560, 140),
+      new THREE.MeshBasicMaterial({ map: loadTexture(panoramaUrl), transparent: true, depthWrite: false, fog: false }),
+    );
+    pano.position.set(180, -14 + 70, -470);
+    this.group.add(pano);
 
     const kit = sideProps();
     this.props = kit.geos;
@@ -183,7 +193,7 @@ export class Solaris {
         mesh.scale.x = -side; // props are modelled for the left side
         mesh.castShadow = true;
         this.group.add(mesh);
-        this.slots.push({ mesh, k: -1e9, side });
+        this.slots.push({ mesh, k: -1e9, side, statues: new Map() });
         const fire = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glow, color: 0xff9a3c, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
         fire.scale.setScalar(5);
         fire.visible = false;
@@ -196,7 +206,7 @@ export class Solaris {
         const mesh = new THREE.Mesh(this.far[0], this.mats);
         mesh.scale.x = -side;
         this.group.add(mesh);
-        this.farSlots.push({ mesh, k: -1e9, side });
+        this.farSlots.push({ mesh, k: -1e9, side, statues: new Map() });
       }
     const arch = gateGeometry();
     for (let i = 0; i < 3; i++) {
@@ -205,12 +215,32 @@ export class Solaris {
       this.arches.push(m);
     }
     scene.add(this.group);
+    void loadStatues().then(st => this.attachStatues(st));
+  }
+
+  /** Stand the sculpted statues on their plinths: one hidden mesh per slot and statue, shown with its piece. */
+  private attachStatues(st: Statues): void {
+    for (const place of STATUES) {
+      const statue = place.id === 'colossus' ? st.colossus : st.sphinx;
+      for (const slot of place.far ? this.farSlots : this.slots) {
+        const m = new THREE.Mesh(statue.geometry, statue.material);
+        m.position.set(place.x, place.y, place.z);
+        m.rotation.y = place.ry;
+        m.scale.setScalar(place.scale);
+        m.castShadow = !place.far;
+        m.visible = false;
+        slot.mesh.add(m);
+        slot.statues.set(place.index, m);
+        const idx = slot.mesh.userData.index;
+        if (idx !== undefined) m.visible = idx === place.index;
+      }
+    }
   }
 
   /** Stand a column on the road-side corner of some city blocks, ready to fall. */
   private armFaller(k: number, side: number, geo: THREE.BufferGeometry): void {
     const i = this.props.indexOf(geo);
-    if (i === BRIDGE || i === 7 || hash(k * 13 + side * 7) > 0.2) return;
+    if (i === BRIDGE || NO_COLLAPSE.has(i) || hash(k * 13 + side * 7) > 0.2) return;
     const f = this.fallers.find(x => !x.mesh.visible);
     if (!f) return;
     Object.assign(f, { k, side, angle: 0, vel: 0, done: false });
@@ -235,7 +265,10 @@ export class Solaris {
       if (s.k !== k) {
         s.k = k;
         const h = hash(k * 2 + 77 + (s.side > 0 ? 1 : 0));
-        s.mesh.geometry = this.far[Math.floor(h * this.far.length)];
+        const fi = FAR_PICK[Math.floor(h * FAR_PICK.length)];
+        s.mesh.geometry = this.far[fi];
+        s.mesh.userData.index = fi;
+        for (const [idx, m] of s.statues) m.visible = idx === fi;
         s.mesh.position.x = s.side * (38 + h * 12);
       }
       s.mesh.position.z = dist - k * FAR - 9;
@@ -248,11 +281,14 @@ export class Solaris {
         s.k = k;
         const h = hash(k * 2 + (s.side > 0 ? 1 : 0));
         // Stretches of open bridge alternate with dense city blocks
-        s.mesh.geometry = this.props[onBridge(k) ? BRIDGE : Math.floor(h * BRIDGE)];
-        s.mesh.userData.banners = this.propBanners[this.props.indexOf(s.mesh.geometry)];
+        const pi = onBridge(k) ? BRIDGE : Math.floor(h * BRIDGE);
+        s.mesh.geometry = this.props[pi];
+        s.mesh.userData.index = pi;
+        for (const [idx, m] of s.statues) m.visible = idx === pi;
+        s.mesh.userData.banners = this.propBanners[pi];
         this.armFaller(k, s.side, s.mesh.geometry);
         s.mesh.position.x = s.side * 7.9;
-        s.mesh.userData.fire = this.propFire[this.props.indexOf(s.mesh.geometry)];
+        s.mesh.userData.fire = this.propFire[pi];
       }
       s.mesh.position.z = dist - k * SLOT;
       if (s.mesh.position.z > -150) for (const a of s.mesh.userData.banners as Anchor[]) this.banners.add(a, s.mesh.position.x, s.mesh.position.z, -s.side);
