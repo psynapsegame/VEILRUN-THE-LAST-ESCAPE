@@ -3,7 +3,7 @@ import type { Game } from '../sim/game';
 import type { SaveData } from '../save';
 import { CSS } from './style';
 
-export const VERSION = '0.2.0';
+export const VERSION = '0.3.0';
 const fmt = (n: number) => Math.floor(n).toLocaleString('fr-FR');
 
 export interface UiHandlers {

@@ -299,8 +299,8 @@ export class World {
     const sx = (Math.random() - 0.5) * this.shake * 0.5;
     const sy = (Math.random() - 0.5) * this.shake * 0.5;
     const speedF = Math.min(1, Math.max(0, (s.speed - CFG.speedStart) / (CFG.speedMax - CFG.speedStart)));
-    this.camera.position.set(this.camX + sx, 3.75 + this.camY + sy, 6.3 - speedF * 0.5);
-    this.camera.lookAt(this.camX * 0.9 + p.x * 0.12, 1.3 + this.camY * 0.6, -8);
+    this.camera.position.set(this.camX + sx, 3.3 + this.camY + sy, 5.4 - speedF * 0.4);
+    this.camera.lookAt(this.camX * 0.9 + p.x * 0.12, 1.25 + this.camY * 0.6, -8);
     this.camera.rotation.z += -p.lean * 0.035;
     const fov = this.baseFov + speedF * 7 + this.fovKick * 9 + (s.dashing ? 5 : 0);
     if (Math.abs(fov - this.camera.fov) > 0.05) {

@@ -59,17 +59,19 @@ Pas encore fait / non vérifié :
 - Le personnage et les décors sont modélisés par code (stylisés, originaux). Ce ne sont pas encore des modèles sculptés/riggés de qualité finale : ce sera l'objet de la Phase 2 (assets glTF).
 - Course sur murs, câbles, vol plané, boss, autres univers, progression, boutique : phases suivantes.
 
-## Phase 2 — avancement
+## Refonte visuelle (budget 0 €) — avancement
 
-Fait et vérifié dans le navigateur :
-- Coureur remplacé par un personnage modélisé, riggé et animé (course, saut, glissade, chute), recoloré aux couleurs du jeu.
-- Ombres dynamiques (désactivées automatiquement sur les appareils lents, remplacées par une ombre simple).
-- Ciel animé (nuages, étoiles), texture de maçonnerie sur tous les décors, second plan de monuments, palmiers, braseros avec flammes et braises, halos lumineux sur les obstacles.
-- Destruction : gravats projetés quand le dash brise un obstacle.
+La stratégie complète, les ressources et leurs licences sont dans `docs/STRATEGIE-VISUELLE.md` ; le registre des ressources tierces est `assets-src/LICENCES.md`.
 
-Reste pour clore la Phase 2 : décors et obstacles modélisés (ils sont encore construits par code), animations dédiées de glissade et d'atterrissage, bande-son enrichie, mesure des performances sur téléphone réel.
+| Étape | Contenu | État |
+|---|---|---|
+| A — Héros | Aventurier encapuchonné aux proportions humaines (Quaternius, CC0), recoloré, animations de sprint, saut, glissade, roulade (dash) et chute | fait, vérifié dans le navigateur |
+| B — Lumière et matière | Éclairage par image de ciel, grès photographié, brume, halo, étalonnage | à faire (nécessite l'accès à Poly Haven et ambientCG) |
+| C — Kit SOLARIS | Architecture monumentale, statues, ponts, obstacles redessinés | à faire |
+| D — Vie et mise en scène | Tissus, rayons, effondrements, Dévoreur | à faire |
+| E — Performance | Profils graphiques, niveaux de détail, compression, écran de chargement | à faire |
 
-Ressources tierces : personnage issu de « KayKit : Adventurers Character Pack » de Kay Lousberg, licence CC0 (usage commercial libre, sans attribution obligatoire) — voir `assets-src/KayKit-Adventurers-LICENSE.txt`. Le modèle est préparé par `tools/trim-runner.mjs`.
+Les décors et obstacles actuels sont encore ceux du prototype (construits par code). Le héros se reconstruit avec `tools/build-hero.mjs`.
 
 ## Plan de production
 
