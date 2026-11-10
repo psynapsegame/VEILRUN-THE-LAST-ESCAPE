@@ -14,11 +14,11 @@ async function stats(file: string) {
 }
 
 describe('budget des ressources 3D', () => {
-  it('le héros : ≤ 20 000 triangles, textures ≤ 1024 px, 9 animations de jeu', async () => {
+  it('le héros : ≤ 20 000 triangles, textures ≤ 1024 px, animations de jeu présentes', async () => {
     const h = await stats('src/assets/hero.glb');
     expect(h.tris).toBeLessThanOrEqual(20000);
     expect(h.maxTex).toBeLessThanOrEqual(1024);
-    for (const c of ['Sprint_Loop', 'Jump_Loop', 'Slide_Loop', 'Roll', 'Death01']) expect(h.clips).toContain(c);
+    for (const c of ['run', 'jump', 'fall']) expect(h.clips).toContain(c);
     expect(h.size).toBeLessThan(2.5 * 1048576);
   });
   it.each(['colosse', 'sphinx', 'tete', 'brasero', 'idole'])('la statue %s : ≤ 12 000 triangles, textures ≤ 1024 px, ≤ 1,5 Mo', async name => {

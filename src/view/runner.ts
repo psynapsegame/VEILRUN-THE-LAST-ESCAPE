@@ -1,8 +1,8 @@
 import * as THREE from 'three';
-import { loadGlb } from './glb';
-import { loading } from './loading';
 import type { PlayerState } from '../sim/player';
 import asset from '../assets/hero.glb';
+import { loadGlb } from './glb';
+import { loading } from './loading';
 
 export interface RunnerFrame {
   state: PlayerState;
@@ -13,53 +13,45 @@ export interface RunnerFrame {
 }
 
 type Anim = 'run' | 'jump' | 'slide' | 'dash' | 'dead';
-/** Clip, playback rate, looping, cross-fade time into it. */
-const ANIMS: Record<Anim, { clip: string; rate: number; loop: boolean; fade: number }> = {
-  run: { clip: 'Sprint_Loop', rate: 1, loop: true, fade: 0.14 },
-  jump: { clip: 'Jump_Loop', rate: 1, loop: true, fade: 0.09 },
-  slide: { clip: 'Slide_Loop', rate: 1, loop: true, fade: 0.1 },
-  dash: { clip: 'Roll', rate: 2.6, loop: false, fade: 0.06 },
-  dead: { clip: 'Death01', rate: 1.6, loop: false, fade: 0.08 },
+interface AnimCfg {
+  /** Clip of hero.glb it is cut from. */
+  src: string;
+  loop: boolean;
+  /** Cross-fade time into it, seconds. */
+  fade: number;
+  /** Play only this part of the source clip (seconds). */
+  range?: [number, number];
+  /** Hold the body in the pose the source clip has at this instant (seconds). */
+  pose?: number;
+}
+const FPS = 30;
+const AIR_TIME = 0.62; // the game's jump lasts about this long
+/**
+ * The Sentinel's animations come from a standard library. Its jump clip has a crouch, a leap and a recovery:
+ * only the airborne part (0.49 s -> 1.11 s) is used, since the game's physics provides the take-off.
+ * It has no slide, so the slide holds the instant of the fall clip where the hero sits back on the ground,
+ * legs stretched forward: sliding feet-first on his back, head towards the camera.
+ */
+const ANIMS: Record<Anim, AnimCfg> = {
+  run: { src: 'run', loop: true, fade: 0.14 },
+  dash: { src: 'run', loop: true, fade: 0.06 },
+  jump: { src: 'jump', loop: false, fade: 0.08, range: [0.49, 1.11] },
+  slide: { src: 'fall', loop: true, fade: 0.1, pose: 0.72 },
+  dead: { src: 'fall', loop: false, fade: 0.08 },
 };
 
-/**
- * Repaints the outfit's colour map: the pack's green cloth becomes the
- * Veilrunner's teal, which reads clearly against SOLARIS sandstone.
- * Costumes will reuse this with other palettes.
- */
-function recolor(tex: THREE.Texture, hue: number): THREE.Texture {
-  const img = tex.image as CanvasImageSource & { width: number; height: number };
-  const cv = document.createElement('canvas');
-  cv.width = img.width;
-  cv.height = img.height;
-  const c = cv.getContext('2d')!;
-  c.drawImage(img, 0, 0);
-  const d = c.getImageData(0, 0, cv.width, cv.height);
-  const col = new THREE.Color();
-  const hsl = { h: 0, s: 0, l: 0 };
-  let changed = 0;
-  for (let i = 0; i < d.data.length; i += 4) {
-    col.setRGB(d.data[i] / 255, d.data[i + 1] / 255, d.data[i + 2] / 255).getHSL(hsl);
-    if (hsl.h > 0.19 && hsl.h < 0.47 && hsl.s > 0.18) {
-      col.setHSL(hue + (hsl.h - 0.33) * 0.2, Math.min(1, hsl.s * 1.05), Math.min(1, hsl.l * 1.12));
-      d.data[i] = col.r * 255;
-      d.data[i + 1] = col.g * 255;
-      d.data[i + 2] = col.b * 255;
-      changed++;
-    }
+function makeClip(src: THREE.AnimationClip, key: Anim, cfg: AnimCfg): THREE.AnimationClip {
+  if (cfg.pose !== undefined) {
+    const f = Math.round(cfg.pose * FPS);
+    return THREE.AnimationUtils.subclip(src, key, f, f + 2, FPS);
   }
-  if (!changed) return tex;
-  c.putImageData(d, 0, 0);
-  const out = new THREE.CanvasTexture(cv);
-  out.flipY = false;
-  out.colorSpace = THREE.SRGBColorSpace;
-  out.wrapS = tex.wrapS;
-  out.wrapT = tex.wrapT;
-  out.anisotropy = 4;
-  return out;
+  if (cfg.range) return THREE.AnimationUtils.subclip(src, key, Math.round(cfg.range[0] * FPS), Math.round(cfg.range[1] * FPS), FPS);
+  const c = src.clone(); // own copy: two states can share a source clip and still cross-fade
+  c.name = key;
+  return c;
 }
 
-/** The Veilrunner: a rigged, skinned adventurer driven by cross-faded animation clips. */
+/** The Sentinel: a rigged, skinned adventurer driven by cross-faded animation clips. */
 export class Runner {
   readonly root = new THREE.Group();
   private pivot = new THREE.Group();
@@ -85,18 +77,13 @@ export class Runner {
     const gltf = await loadGlb(asset);
     const model = gltf.scene;
     model.rotation.y = Math.PI; // the model faces +Z, the runner runs towards -Z
-    model.scale.setScalar(0.95);
-    const done = new Map<THREE.Texture, THREE.Texture>();
     model.traverse(o => {
       const m = o as THREE.Mesh;
       if (!m.isMesh) return;
       m.castShadow = true;
       m.frustumCulled = false; // skinned bounds are unreliable; the runner is always on screen
       const mat = m.material as THREE.MeshStandardMaterial;
-      if (mat.map) {
-        if (!done.has(mat.map)) done.set(mat.map, recolor(mat.map, 0.5));
-        mat.map = done.get(mat.map)!;
-      }
+      for (const t of [mat.map, mat.normalMap, mat.metalnessMap, mat.roughnessMap]) if (t) t.anisotropy = 4;
       mat.emissive = new THREE.Color(0x56e6ff);
       mat.emissiveIntensity = 0;
       if (!this.mats.includes(mat)) this.mats.push(mat);
@@ -105,9 +92,9 @@ export class Runner {
     const mixer = new THREE.AnimationMixer(model);
     for (const key of Object.keys(ANIMS) as Anim[]) {
       const cfg = ANIMS[key];
-      const clip = gltf.animations.find(c => c.name === cfg.clip);
-      if (!clip) throw new Error(`hero.glb: missing clip ${cfg.clip}`);
-      const a = mixer.clipAction(clip);
+      const src = gltf.animations.find(c => c.name === cfg.src);
+      if (!src) throw new Error(`hero.glb: missing clip ${cfg.src}`);
+      const a = mixer.clipAction(makeClip(src, key, cfg));
       if (!cfg.loop) {
         a.setLoop(THREE.LoopOnce, 1);
         a.clampWhenFinished = true;
@@ -123,18 +110,24 @@ export class Runner {
     if (want !== this.anim) {
       const cfg = ANIMS[want];
       const next = this.actions.get(want)!;
-      const fade = this.anim === '' ? 0 : cfg.fade;
-      next.reset().setEffectiveWeight(1).setEffectiveTimeScale(cfg.rate).fadeIn(fade).play();
+      const fade = this.anim === '' ? 0 : this.anim === 'slide' ? Math.max(cfg.fade, 0.22) : cfg.fade; // getting up takes a moment
+      let rate = 1;
+      if (want === 'jump') rate = (cfg.range![1] - cfg.range![0]) / AIR_TIME;
+      else if (want === 'slide') rate = 0.001; // hold the pose
+      else if (want === 'dead') rate = 1.7;
+      next.reset().setEffectiveWeight(1).setEffectiveTimeScale(rate).fadeIn(fade).play();
       if (this.current && this.current !== next) this.current.fadeOut(fade);
       this.current = next;
       this.anim = want;
     }
     // Stride rate follows ground speed so the feet do not skate.
-    if (want === 'run') this.current!.timeScale = 0.72 + f.speed / 32;
+    if (want === 'run') this.current!.timeScale = 0.85 + (Math.max(f.speed, 11) - 11) / 14 * 0.7;
+    else if (want === 'dash') this.current!.timeScale = 1.6;
     this.mixer.update(dt);
 
+    // Body attitude on top of the clips: lean into lane changes, tuck for slides, pitch in the air
     const k = 1 - Math.exp(-dt * 14);
-    const pitch = f.state === 'jump' ? (f.vy > 0 ? -0.16 : 0.1) : 0;
+    const pitch = f.state === 'jump' ? (f.vy > 0 ? -0.12 : 0.08) : f.dashing ? -0.22 : 0;
     this.pitch += (pitch - this.pitch) * k;
     this.pivot.rotation.set(this.pitch, -f.lean * 0.4, -f.lean * 0.28);
     const glow = f.dashing ? 0.28 : 0;
