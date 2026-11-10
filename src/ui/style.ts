@@ -35,7 +35,8 @@ background:linear-gradient(180deg,#f6dc9c,var(--gold) 60%,#b98a3a)!important;cli
 .vr-ver{position:absolute;bottom:calc(10px + env(safe-area-inset-bottom,0px));left:0;right:0;text-align:center;font-size:10px;letter-spacing:.2em;color:rgba(167,159,181,.6)}
 /* HUD */
 .vr-hud{justify-content:space-between}
-.vr-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;font-variant-numeric:tabular-nums;text-shadow:0 1px 6px rgba(7,6,11,.9)}
+.vr-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;font-variant-numeric:tabular-nums;text-shadow:0 1px 3px rgba(7,6,11,.95),0 0 12px rgba(7,6,11,.7)}
+.vr-top .vr-label{color:var(--text)}
 .vr-hud,.vr-hud *{pointer-events:none}
 #vr .vr-hud button{pointer-events:auto}
 .vr-big{font-family:var(--display);font-size:clamp(24px,7.5vw,36px);font-weight:700;line-height:1;color:var(--text)}

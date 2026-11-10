@@ -1,4 +1,10 @@
 import * as THREE from 'three';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
+import { loadEnvironment } from './materials';
 import { CFG, Kind } from '../sim/config';
 import type { GameEvent } from '../sim/game';
 import type { Player } from '../sim/player';
@@ -27,6 +33,8 @@ export class World {
   readonly camera = new THREE.PerspectiveCamera(62, 1, 0.1, 600);
   private env: Solaris;
   private runner = new Runner();
+  private composer: EffectComposer;
+  private post = true;
   private debris: THREE.InstancedMesh;
   private deb = { p: new Float32Array(48 * 3), v: new Float32Array(48 * 3), life: new Float32Array(48), head: 0 };
   private eul = new THREE.Euler();
@@ -59,7 +67,28 @@ export class World {
     this.renderer.setPixelRatio(this.ratios[0]);
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 0.8;
     this.env = new Solaris(this.scene);
+    void loadEnvironment(this.renderer).then(env => {
+      this.scene.environment = env;
+      this.scene.environmentIntensity = 0.9;
+    });
+    // Post-processing (higher tiers only): soft bloom on bright sources, then a warm/cool grade
+    this.composer = new EffectComposer(this.renderer);
+    this.composer.addPass(new RenderPass(this.scene, this.camera));
+    this.composer.addPass(new UnrealBloomPass(new THREE.Vector2(256, 256), 0.32, 0.7, 0.92));
+    this.composer.addPass(new OutputPass());
+    this.composer.addPass(new ShaderPass({
+      uniforms: { tDiffuse: { value: null } },
+      vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
+      fragmentShader: `uniform sampler2D tDiffuse; varying vec2 vUv;
+        void main(){ vec3 c = texture2D(tDiffuse, vUv).rgb; float l = dot(c, vec3(0.299, 0.587, 0.114));
+          c = mix(vec3(l), c, 1.12);                                   // saturation
+          c = (c - 0.5) * 1.06 + 0.5;                                  // contrast
+          c += mix(vec3(-0.012, 0.0, 0.02), vec3(0.02, 0.008, -0.02), smoothstep(0.15, 0.75, l)); // cool shadows, warm lights
+          gl_FragColor = vec4(c, 1.0); }`,
+    }));
     void this.runner.load();
 
     this.scene.add(this.runner.root);
@@ -82,7 +111,7 @@ export class World {
     this.scene.add(this.shadow);
     this.scene.add(this.parts.points);
 
-    const mat = this.env.mat;
+    const mat = this.env.mats;
     const halo = (color: number, x: number, y: number, z: number, size: number) => {
       const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.env.glow, color, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
       sp.position.set(x, y, z);
@@ -112,7 +141,7 @@ export class World {
     this.coins.frustumCulled = false;
     this.scene.add(this.coins);
     // Rubble chunks thrown when an obstacle is smashed
-    this.debris = new THREE.InstancedMesh(box(0.42, 0.34, 0.38), new THREE.MeshLambertMaterial({ color: PAL.stoneLight, map: this.env.mat.map }), 48);
+    this.debris = new THREE.InstancedMesh(box(0.42, 0.34, 0.38), this.env.curbMaterial, 48);
     this.debris.frustumCulled = false;
     this.debris.castShadow = true;
     this.debris.count = 48;
@@ -127,6 +156,8 @@ export class World {
     const w = c.clientWidth || window.innerWidth;
     const h = c.clientHeight || window.innerHeight;
     this.renderer.setSize(w, h, false);
+    this.composer.setPixelRatio(this.renderer.getPixelRatio());
+    this.composer.setSize(w, h);
     this.camera.aspect = w / h;
     this.baseFov = w < h ? 64 : 52;
     this.camera.updateProjectionMatrix();
@@ -137,6 +168,7 @@ export class World {
     this.quality = Math.max(0, Math.min(this.ratios.length - 1, level));
     this.renderer.setPixelRatio(this.ratios[this.quality]);
     // Lower tiers trade the real-time shadow map for a blob shadow
+    this.post = this.quality < 2;
     const shadows = this.quality < 2;
     this.env.sun.castShadow = shadows;
     this.shadow.visible = !shadows;
@@ -307,7 +339,8 @@ export class World {
       this.camera.fov += (fov - this.camera.fov) * (1 - Math.exp(-dt * 6));
       this.camera.updateProjectionMatrix();
     }
-    this.renderer.render(this.scene, this.camera);
+    if (this.post) this.composer.render();
+    else this.renderer.render(this.scene, this.camera);
   }
 }
 export { PAL };

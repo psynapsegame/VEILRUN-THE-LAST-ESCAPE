@@ -3,3 +3,12 @@ declare module '*.glb' {
   const asset: string | Uint8Array;
   export default asset;
 }
+declare module '*.hdr' {
+  const asset: string | Uint8Array;
+  export default asset;
+}
+declare module '*.webp' {
+  /** URL or data URL. */
+  const url: string;
+  export default url;
+}

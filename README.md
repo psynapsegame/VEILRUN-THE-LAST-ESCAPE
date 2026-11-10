@@ -66,7 +66,7 @@ La stratégie complète, les ressources et leurs licences sont dans `docs/STRATE
 | Étape | Contenu | État |
 |---|---|---|
 | A — Héros | Aventurier encapuchonné aux proportions humaines (Quaternius, CC0), recoloré, animations de sprint, saut, glissade, roulade (dash) et chute | fait, vérifié dans le navigateur |
-| B — Lumière et matière | Éclairage par image de ciel, grès photographié, brume, halo, étalonnage | à faire (nécessite l'accès à Poly Haven et ambientCG) |
+| B — Lumière et matière | Éclairage par image de ciel (HDRI), grès et marbre photographiés, or réfléchissant, brume de hauteur dorée vers le soleil, halo lumineux, étalonnage | fait, vérifié dans le navigateur ; performances sur téléphone non mesurées |
 | C — Kit SOLARIS | Architecture monumentale, statues, ponts, obstacles redessinés | à faire |
 | D — Vie et mise en scène | Tissus, rayons, effondrements, Dévoreur | à faire |
 | E — Performance | Profils graphiques, niveaux de détail, compression, écran de chargement | à faire |

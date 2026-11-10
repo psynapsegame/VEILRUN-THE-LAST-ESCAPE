@@ -1,22 +1,30 @@
 import * as THREE from 'three';
-import { Builder, box, canvasTexture, fluted, glowTexture, stoneTexture } from './build';
+import { Builder, box, fluted, glowTexture } from './build';
+import { SURFACES, Surface, installAtmosphere } from './materials';
 import type { Particles } from './particles';
 import type { Kind } from '../sim/config';
 
 /** SOLARIS — the golden antique city. Palette, sky, ground, props and obstacle models. */
 export const PAL = {
-  stone: 0xd9b27c,
-  stoneDark: 0xa87a4e,
-  stoneLight: 0xf1d6a4,
+  // Masonry tints multiply the photographed sandstone, so they stay close to white.
+  stone: 0xeedfc6,
+  stoneDark: 0xb49a7c,
+  stoneLight: 0xffffff,
   gold: 0xffc04d,
   violet: 0x8b5cff,
   cyan: 0x5fe8ff,
   fire: 0xff7a2a,
-  fog: 0xf3b877,
-  skyTop: 0x2a1a5c,
-  skyMid: 0xc9603f,
+  fog: 0xc9b4a8,
+  skyTop: 0x16306e,
+  skyMid: 0x5f93cc,
   sand: 0xc48f58,
 };
+
+/** Where the sun sits in the sky (unit vector from the runner towards it). */
+export const SUN_DIR = new THREE.Vector3(-0.18, 0.2, -1).normalize();
+const GLOW = new Set([PAL.cyan, PAL.violet, PAL.fire, 0xffe08a, 0xfff0b0]);
+const PLAIN = new Set([0x8a5a34, 0x9c6a3e, 0x3f8f4a, 0x56a85a, 0x7a4a2a]);
+Builder.classify = c => (c === PAL.gold ? 1 : GLOW.has(c) ? 2 : PLAIN.has(c) ? 3 : 0);
 
 const SLOT = 14; // metres between roadside props
 const SLOTS = 13;
@@ -181,12 +189,19 @@ export function obstacleGeometry(kind: Kind): THREE.BufferGeometry {
 
 export class Solaris {
   readonly group = new THREE.Group();
-  private road: THREE.Texture;
+  private road: Surface;
+  private terrace: Surface;
+  private curb: Surface;
   private props: THREE.BufferGeometry[];
   private slots: { mesh: THREE.Mesh; k: number; side: number }[] = [];
   private arches: THREE.Mesh[] = [];
-  /** Shared masonry material (also used by obstacles and debris). */
-  readonly mat = new THREE.MeshLambertMaterial({ vertexColors: true, map: stoneTexture() });
+  /** Shared materials, indexed by Builder slot: masonry, gold, glowing, plain. */
+  readonly mats: THREE.Material[];
+  readonly wall: Surface;
+  /** Rough-hewn stone (curbs, rubble). */
+  get curbMaterial(): THREE.Material {
+    return this.curb.material;
+  }
   readonly sun: THREE.DirectionalLight;
   readonly glow = glowTexture();
   private sky: THREE.ShaderMaterial;
@@ -195,10 +210,20 @@ export class Solaris {
   private fires: THREE.Sprite[] = [];
 
   constructor(scene: THREE.Scene) {
-    scene.fog = new THREE.Fog(PAL.fog, 45, 175);
-    scene.add(new THREE.HemisphereLight(0xfff0d0, 0x6a4a78, 1.5));
-    const sun = (this.sun = new THREE.DirectionalLight(0xffdfae, 2.4));
-    sun.position.set(-9, 14, -4);
+    installAtmosphere(SUN_DIR);
+    scene.fog = new THREE.FogExp2(PAL.fog, 0.0026);
+    this.wall = SURFACES.wall();
+    this.wall.repeat.set(0.5, 0.5); // prop UVs are in half-metres: one texture tile spans 4 m
+    this.mats = [
+      this.wall.material,
+      new THREE.MeshStandardMaterial({ metalness: 1, roughness: 0.3, vertexColors: true, envMapIntensity: 1.3 }),
+      new THREE.MeshBasicMaterial({ vertexColors: true, color: new THREE.Color(1.5, 1.5, 1.5) }),
+      new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 }),
+    ];
+    // The environment map provides the ambient light; the hemisphere only lifts the shadows a little.
+    scene.add(new THREE.HemisphereLight(0xcfe0ff, 0x8a6a4a, 0.35));
+    const sun = (this.sun = new THREE.DirectionalLight(0xffd29a, 3.6));
+    sun.position.set(-10, 11, -7);
     sun.target.position.set(0, 0, -14);
     scene.add(sun, sun.target);
     // One tight shadow map around the runner's playfield
@@ -208,9 +233,6 @@ export class Solaris {
     sc.left = -11; sc.right = 11; sc.top = 26; sc.bottom = -16; sc.near = 1; sc.far = 50;
     sun.shadow.bias = -0.0015;
     sun.shadow.normalBias = 0.04;
-    const rim = new THREE.DirectionalLight(0x8f7bff, 0.8);
-    rim.position.set(6, 4, -8);
-    scene.add(rim);
 
     // Sky dome: violet zenith melting into a golden horizon, with the sun ahead
     const sky = new THREE.Mesh(
@@ -224,78 +246,62 @@ export class Solaris {
           float ns(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f);
             return mix(mix(hs(i), hs(i+vec2(1,0)), f.x), mix(hs(i+vec2(0,1)), hs(i+vec2(1,1)), f.x), f.y); }
           void main(){ vec3 n = normalize(d); float h = clamp(n.y, 0.0, 1.0);
-            vec3 c = mix(hor, mid, smoothstep(0.0, 0.22, h)); c = mix(c, top, smoothstep(0.15, 0.7, h));
             float s = max(0.0, dot(n, normalize(vec3(-0.18, 0.2, -1.0))));
-            // Stars near the zenith
-            vec2 sp = n.xz / (n.y + 0.4) * 60.0; float st = step(0.985, hs(floor(sp))) * smoothstep(0.35, 0.8, h);
-            c += vec3(0.9, 0.85, 1.0) * st * (0.5 + 0.5 * sin(time * 2.0 + hs(floor(sp)) * 40.0));
-            // Drifting cloud bands, lit gold by the sun and violet above
+            // Haze at the horizon turns gold around the sun, exactly like the fog on the ground
+            vec3 haze = mix(hor, vec3(1.3, 0.86, 0.46), pow(s, 8.0));
+            vec3 c = mix(haze, mid, smoothstep(0.0, 0.3, h)); c = mix(c, top, smoothstep(0.2, 0.85, h));
+            c += vec3(1.0, 0.62, 0.3) * pow(s, 4.0) * 0.22 * (1.0 - h);
             vec2 q = n.xz / (n.y + 0.12) * vec2(1.2, 2.6) + vec2(time * 0.012, 0.0);
             float cl = ns(q) * 0.55 + ns(q * 2.3) * 0.3 + ns(q * 5.1) * 0.15;
-            cl = smoothstep(0.52, 0.8, cl) * smoothstep(0.015, 0.16, n.y) * (1.0 - smoothstep(0.45, 0.8, h));
-            vec3 cc = mix(vec3(0.55, 0.3, 0.6), vec3(1.0, 0.78, 0.5), clamp(s * 1.6 + 0.25 - h, 0.0, 1.0));
-            c = mix(c, cc, cl * 0.8);
-            c += vec3(1.0, 0.8, 0.5) * (pow(s, 600.0) * 3.0 + pow(s, 12.0) * 0.45);
-            gl_FragColor = vec4(c, 1.0); }`,
+            cl = smoothstep(0.5, 0.82, cl) * smoothstep(0.015, 0.16, n.y) * (1.0 - smoothstep(0.5, 0.85, h));
+            vec3 cc = mix(vec3(0.82, 0.8, 0.9), vec3(1.6, 1.05, 0.62), clamp(s * 1.5 + 0.2 - h, 0.0, 1.0));
+            c = mix(c, cc, cl * 0.85);
+            c += vec3(1.0, 0.85, 0.6) * (pow(s, 1200.0) * 14.0 + pow(s, 60.0) * 0.35);
+            gl_FragColor = vec4(c, 1.0);
+            #include <tonemapping_fragment>
+            #include <colorspace_fragment>
+          }`,
       }),
     );
     sky.renderOrder = -10;
     this.sky = sky.material as THREE.ShaderMaterial;
     this.group.add(sky);
 
-    // Road: sandstone slabs with golden lane inlays (8 m of road per tile)
-    this.road = canvasTexture(512, (c, s) => {
-      c.fillStyle = '#c99a63';
-      c.fillRect(0, 0, s, s);
-      for (let i = 0; i < 2600; i++) {
-        c.fillStyle = `rgba(${Math.random() < 0.5 ? '70,40,20' : '255,225,170'},${Math.random() * 0.1})`;
-        c.fillRect(Math.random() * s, Math.random() * s, 2 + Math.random() * 5, 2 + Math.random() * 5);
-      }
-      c.strokeStyle = 'rgba(70,40,20,0.5)';
-      c.lineWidth = 3;
-      for (let r = 0; r < 4; r++) {
-        const y = (r * s) / 4;
-        c.beginPath(); c.moveTo(0, y); c.lineTo(s, y); c.stroke();
-        for (let k = 0; k < 4; k++) {
-          const x = ((k + (r % 2) * 0.5) * s) / 4;
-          c.beginPath(); c.moveTo(x, y); c.lineTo(x, y + s / 4); c.stroke();
-        }
-      }
-      const lane = (2.2 / 8) * s;
-      for (const x of [s / 2 - lane / 2, s / 2 + lane / 2]) {
-        c.fillStyle = '#7a5216'; c.fillRect(x - 5, 0, 10, s);
-        c.fillStyle = '#ffcf63'; c.fillRect(x - 3, 0, 6, s);
-      }
-      for (const x of [0, s - 26]) {
-        c.fillStyle = '#6d4526'; c.fillRect(x, 0, 26, s);
-        c.fillStyle = '#e2a941';
-        for (let y = 0; y < s; y += 32) c.fillRect(x + 7, y + 6, 12, 20);
-      }
-    });
-    this.road.wrapS = this.road.wrapT = THREE.RepeatWrapping;
-    this.road.repeat.set(1, 30);
-    this.road.anisotropy = 4;
-    const road = new THREE.Mesh(new THREE.PlaneGeometry(8, 240), new THREE.MeshLambertMaterial({ map: this.road }));
+    // Road: polished cream slabs with gold lane inlays, between rough-hewn curbs
+    this.road = SURFACES.road();
+    this.road.repeat.set(8 / 3, 240 / 3);
+    const road = new THREE.Mesh(new THREE.PlaneGeometry(8, 240), this.road.material);
     road.rotation.x = -Math.PI / 2;
     road.position.z = -100;
     road.receiveShadow = true;
     this.group.add(road);
-    const terrace = stoneTexture();
-    terrace.repeat.set(125, 125);
-    const sand = new THREE.Mesh(new THREE.PlaneGeometry(500, 500), new THREE.MeshLambertMaterial({ color: PAL.sand, map: terrace }));
+    const gold = new THREE.MeshStandardMaterial({ color: 0xffc35a, metalness: 1, roughness: 0.32, envMapIntensity: 1.3 });
+    for (const x of [-1.1, 1.1, -3.7, 3.7]) {
+      const inlay = new THREE.Mesh(box(Math.abs(x) > 2 ? 0.22 : 0.09, 0.02, 240), gold);
+      inlay.position.set(x, 0.003, -100);
+      this.group.add(inlay);
+    }
+    this.terrace = SURFACES.terrace();
+    this.terrace.repeat.set(125, 125);
+    const sand = new THREE.Mesh(new THREE.PlaneGeometry(500, 500), this.terrace.material);
     sand.receiveShadow = true;
     sand.rotation.x = -Math.PI / 2;
     sand.position.set(0, -0.6, -150);
     this.group.add(sand);
+    this.curb = SURFACES.rough();
     for (const s of [-1, 1]) {
-      const curb = new THREE.Mesh(box(0.7, 0.9, 240), new THREE.MeshLambertMaterial({ color: PAL.stoneDark }));
+      const geo = box(0.7, 0.9, 240);
+      const P = geo.attributes.position, uv = geo.attributes.uv;
+      for (let i = 0; i < P.count; i++) uv.setXY(i, P.getZ(i) * 0.4, (P.getX(i) + P.getY(i)) * 0.4);
+      const curb = new THREE.Mesh(geo, this.curb.material);
       curb.position.set(s * 4.35, -0.1, -100);
+      curb.castShadow = curb.receiveShadow = true;
       this.group.add(curb);
     }
 
     // Far skyline: hazy pyramids that never get closer
-    const haze = new THREE.MeshBasicMaterial({ color: 0xd98f5c, fog: false });
-    const haze2 = new THREE.MeshBasicMaterial({ color: 0xe6a56a, fog: false });
+    const haze = new THREE.MeshBasicMaterial({ color: 0xb9a7a4, fog: false });
+    const haze2 = new THREE.MeshBasicMaterial({ color: 0xcdb7a6, fog: false });
     const spots: [number, number, number, number][] = [[-110, -300, 70, 0], [95, -330, 95, 1], [-30, -360, 55, 1], [170, -280, 50, 0], [-200, -310, 60, 1]];
     for (const [x, z, h, m] of spots) {
       const p = new THREE.Mesh(new THREE.ConeGeometry(h * 0.85, h, 4), m ? haze2 : haze);
@@ -307,7 +313,7 @@ export class Solaris {
     this.props = sideProps();
     for (let i = 0; i < SLOTS; i++)
       for (const side of [-1, 1]) {
-        const mesh = new THREE.Mesh(this.props[0], this.mat);
+        const mesh = new THREE.Mesh(this.props[0], this.mats);
         mesh.scale.x = -side; // props are modelled for the left side
         mesh.castShadow = true;
         this.group.add(mesh);
@@ -321,14 +327,14 @@ export class Solaris {
     this.far = farBuildings();
     for (let i = 0; i < 7; i++)
       for (const side of [-1, 1]) {
-        const mesh = new THREE.Mesh(this.far[0], this.mat);
+        const mesh = new THREE.Mesh(this.far[0], this.mats);
         mesh.scale.x = -side;
         this.group.add(mesh);
         this.farSlots.push({ mesh, k: -1e9, side });
       }
     const arch = archGeometry();
     for (let i = 0; i < 3; i++) {
-      const m = new THREE.Mesh(arch, this.mat);
+      const m = new THREE.Mesh(arch, this.mats);
       this.group.add(m);
       this.arches.push(m);
     }
@@ -338,7 +344,9 @@ export class Solaris {
   /** Recycle props around the runner. No allocation: geometries are shared, meshes reused. */
   update(dist: number, dt: number, parts: Particles): void {
     this.sky.uniforms.time.value += dt;
-    this.road.offset.y = (dist / 8) % 1;
+    this.road.offset.y = (dist / 3) % 1;
+    this.terrace.offset.y = (dist / 4) % 1;
+    this.curb.offset.x = -((dist * 0.4) % 1);
     const FAR = 30;
     const fb = Math.floor(dist / FAR) - 1;
     for (let n = 0; n < this.farSlots.length; n++) {

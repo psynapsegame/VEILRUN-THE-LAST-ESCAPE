@@ -2,8 +2,13 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 /** Builds one static mesh geometry out of coloured primitives (one draw call per prop). */
+/** Material slots of a built prop: 0 masonry, 1 gold, 2 glowing, 3 plain (plants, wood). */
+export type Slot = 0 | 1 | 2 | 3;
+
 export class Builder {
-  private parts: THREE.BufferGeometry[] = [];
+  /** Decides which material slot a palette colour belongs to. */
+  static classify: (color: number) => Slot = () => 0;
+  private parts: THREE.BufferGeometry[][] = [[], [], [], []];
   private m = new THREE.Matrix4();
   private q = new THREE.Quaternion();
   private e = new THREE.Euler();
@@ -33,14 +38,22 @@ export class Builder {
       uv[i * 2 + 1] = u[1] * 0.5;
     }
     g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
-    this.parts.push(g);
+    this.parts[Builder.classify(color)].push(g);
     return this;
   }
 
   build(): THREE.BufferGeometry {
-    const g = mergeGeometries(this.parts, false)!;
-    this.parts.forEach(p => p.dispose());
-    this.parts = [];
+    const slots: number[] = [];
+    const merged: THREE.BufferGeometry[] = [];
+    this.parts.forEach((ps, slot) => {
+      if (!ps.length) return;
+      merged.push(mergeGeometries(ps, false)!);
+      slots.push(slot);
+      ps.forEach(p => p.dispose());
+    });
+    const g = mergeGeometries(merged, true)!;
+    g.groups.forEach((grp, i) => (grp.materialIndex = slots[i]));
+    this.parts = [[], [], [], []];
     g.computeBoundingSphere();
     return g;
   }
@@ -56,35 +69,6 @@ export function canvasTexture(size: number, draw: (c: CanvasRenderingContext2D, 
   draw(cv.getContext('2d')!, size);
   const t = new THREE.CanvasTexture(cv);
   t.colorSpace = THREE.SRGBColorSpace;
-  return t;
-}
-
-/** Tileable masonry texture (2 m per tile) multiplied over vertex colours. */
-export function stoneTexture(): THREE.CanvasTexture {
-  const t = canvasTexture(256, (c, s) => {
-    c.fillStyle = '#f2f2f2';
-    c.fillRect(0, 0, s, s);
-    for (let i = 0; i < 1800; i++) {
-      const v = Math.random() < 0.5 ? 255 : 120;
-      c.fillStyle = `rgba(${v},${v},${v},${Math.random() * 0.12})`;
-      c.fillRect(Math.random() * s, Math.random() * s, 1 + Math.random() * 6, 1 + Math.random() * 3);
-    }
-    for (let r = 0; r < 4; r++) {
-      const y = r * 64;
-      c.fillStyle = 'rgba(60,40,30,0.55)';
-      c.fillRect(0, y, s, 3);
-      c.fillStyle = 'rgba(255,255,255,0.35)';
-      c.fillRect(0, y + 3, s, 2);
-      for (let k = 0; k < 2; k++) {
-        const x = (k * 128 + (r % 2) * 64) % s;
-        c.fillStyle = 'rgba(60,40,30,0.5)';
-        c.fillRect(x, y, 3, 64);
-        c.fillStyle = 'rgba(255,255,255,0.3)';
-        c.fillRect(x + 3, y, 2, 64);
-      }
-    }
-  });
-  t.wrapS = t.wrapT = THREE.RepeatWrapping;
   return t;
 }
 
