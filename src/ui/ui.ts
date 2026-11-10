@@ -66,6 +66,7 @@ export class Ui {
   <button class="vr-btn ghost" data-a="menu">MENU</button>
 </section>
 <div class="vr-debug" data-e="debug" hidden></div>
+<div class="vr-flash" data-e="flash"></div>
 <section class="vr-splash" data-e="splash" aria-label="Chargement">
   <div class="vr-splash-head"><h1 class="vr-title">VEILRUN</h1><p class="vr-sub">THE LAST ESCAPE</p></div>
   <div class="vr-load"><i data-e="loadbar"></i></div>
@@ -88,6 +89,22 @@ export class Ui {
     });
     // Buttons must never leak into the gesture surface.
     this.root.querySelectorAll('button').forEach(b => b.addEventListener('pointerdown', e => e.stopPropagation()));
+  }
+
+  private flashLevel = 0;
+  private announceUntil = 0;
+  private announceText = '';
+  /** White-out around a portal: 0..1. */
+  flash(a: number): void {
+    const v = Math.round(a * 100) / 100;
+    if (v === this.flashLevel) return;
+    this.flashLevel = v;
+    this.el.flash.style.opacity = String(v);
+  }
+  /** A big word in the middle of the screen for a moment (the name of the world just entered). */
+  announce(text: string): void {
+    this.announceText = text;
+    this.announceUntil = performance.now() + 3000;
   }
 
   /** Loading screen: real progress (0..1) of the assets the scene is waiting for. */
@@ -129,7 +146,7 @@ export class Ui {
       l.until = g.time + 2.6;
       l.msg = `${fmt(mile * 500)} M  ·  ${Math.round(speedAt(g.dist) * 3.6)} KM/H`;
     }
-    const tip = g.time < 2.2 ? '← GLISSE →' : g.time < 4.4 ? '↑ SAUTER   ·   ↓ GLISSER' : g.time < 6.6 ? 'DOUBLE-TAP : DASH' : g.time < l.until ? l.msg : '';
+    const tip = g.time < 2.2 ? '← GLISSE →' : g.time < 4.4 ? '↑ SAUTER   ·   ↓ GLISSER' : g.time < 6.6 ? 'DOUBLE-TAP : DASH' : performance.now() < this.announceUntil ? this.announceText : g.time < l.until ? l.msg : '';
     if (tip !== l.tip) {
       this.el.tip.textContent = l.tip = tip;
     }

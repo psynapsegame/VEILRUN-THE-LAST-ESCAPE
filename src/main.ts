@@ -2,7 +2,7 @@ import { GameAudio } from './audio/audio';
 import { GestureRecognizer } from './input/gestures';
 import { QualityGovernor } from './quality';
 import { loadSave, recordRun, writeSave, KV } from './save';
-import { CFG } from './sim/config';
+import { CFG, SCHEDULE, WORLD_NAMES } from './sim/config';
 import { Game } from './sim/game';
 import { Action, Player } from './sim/player';
 import { Ui } from './ui/ui';
@@ -25,7 +25,11 @@ let dyingT = 0;
 let debugOn = /[?&]debug/.test(location.search);
 const t0 = performance.now();
 let splashDone = /[?&]nosplash/.test(location.search); // ?nosplash: skip the loading screen (automated tests)
-const idle: ViewState = { dist: 0, speed: 9, player: new Player(), dashing: false, track: { rows: [], coins: [] } };
+// ?portal=300 moves the first portal closer (testing)
+const portalParam = /[?&]portal=(\d+)/.exec(location.search);
+if (portalParam) SCHEDULE.first = +portalParam[1];
+let shownWorld = 0;
+const idle: ViewState = { time: 0, dist: 0, speed: 9, player: new Player(), dashing: false, track: { rows: [], coins: [] } };
 
 const ui = new Ui(
   {
@@ -45,6 +49,7 @@ ui.menu(save);
 if (splashDone) ui.hideSplash();
 
 function start(): void {
+  shownWorld = 0;
   game = new Game((Math.random() * 2 ** 31) | 0);
   gov.rewarm(2); // starting a run allocates and uploads: do not judge those frames
   world.reset();
@@ -54,6 +59,7 @@ function start(): void {
   ui.show('hud');
 }
 function toMenu(): void {
+  shownWorld = 0;
   mode = 'menu';
   game = null;
   world.reset();
@@ -173,9 +179,18 @@ function frame(now: number): void {
   } else if (mode === 'over' && game) {
     world.render(dt, game);
   } else {
-    idle.dist += idle.speed * dt;
+    idle.dist = (idle.dist + idle.speed * dt) % 1260; // a multiple of every scenery period: the wrap is invisible, and the first portal is never reached
     audio.intensity = 0;
     world.render(dt, idle);
+  }
+  // Portal: white-out on the page, the new world's name, and its sound
+  ui.flash(world.flash);
+  if (world.worldIdx !== shownWorld) {
+    shownWorld = world.worldIdx;
+    if (mode === 'run') {
+      ui.announce(WORLD_NAMES[shownWorld]);
+      audio.sfx('portal');
+    }
   }
 }
 requestAnimationFrame(frame);

@@ -21,6 +21,12 @@ export const PAL = {
   skyMid: 0x5f93cc,
 };
 
+/** NEXUS, the neon metropolis: facades with lit windows, trim metal, glowing neon, plain dark parts. */
+export const NX = {
+  steel: 0x262f50, dark: 0x10131f, trim: 0x7f8db8,
+  cyan: 0x2fe8ff, magenta: 0xff3fd2, amber: 0xffb02e, red: 0xff3a4a, white: 0xdff6ff,
+};
+const NX_GLOW = new Set([NX.cyan, NX.magenta, NX.amber, NX.red, NX.white]);
 const GLOW = new Set([PAL.cyan, PAL.fire, PAL.ember]);
 const PLAIN = new Set([PAL.cloth, PAL.clothRed, PAL.trunk, PAL.trunkDark, PAL.leaf, PAL.leafLight, PAL.shadow]);
-Builder.classify = c => (c === PAL.gold ? 1 : GLOW.has(c) ? 2 : PLAIN.has(c) ? 3 : 0);
+Builder.classify = c => (c === PAL.gold || c === NX.trim ? 1 : GLOW.has(c) || NX_GLOW.has(c) ? 2 : PLAIN.has(c) || c === NX.dark ? 3 : 0);

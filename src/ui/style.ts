@@ -57,6 +57,8 @@ font-family:var(--display)!important;font-size:11px!important;letter-spacing:.14
 .vr-tip{position:absolute;left:0;right:0;top:30%;text-align:center;font-family:var(--display);font-size:clamp(17px,5.4vw,26px);letter-spacing:.22em;color:var(--text);
 text-shadow:0 0 16px rgba(154,107,255,.9),0 2px 8px rgba(7,6,11,.9);pointer-events:none;transition:opacity .3s}
 .vr-debug{position:absolute;left:max(8px,env(safe-area-inset-left,0px));top:calc(96px + env(safe-area-inset-top,0px));font:11px/1.35 ui-monospace,Menlo,monospace;color:var(--cyan);background:rgba(7,6,11,.7);padding:6px 8px;white-space:pre;pointer-events:none}
+/* Portal white-out */
+.vr-flash{position:absolute;inset:0;z-index:30;pointer-events:none;opacity:0;background:radial-gradient(circle at 50% 55%,#fff 0,#fff 20%,rgba(150,235,255,.94) 48%,rgba(255,80,220,.8) 100%)}
 /* Loading screen */
 .vr-splash{position:absolute;inset:0;z-index:60;background:#07060b center 32%/cover no-repeat;display:flex;flex-direction:column;align-items:center;text-align:center;
 padding:calc(11% + env(safe-area-inset-top,0px)) 16px 0;transition:opacity .8s ease}

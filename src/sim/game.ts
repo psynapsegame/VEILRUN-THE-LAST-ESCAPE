@@ -1,4 +1,4 @@
-import { CFG, GAP, OBSTACLE, speedAt } from './config';
+import { CFG, GAP, LASER, OBSTACLE, laserOn, speedAt } from './config';
 import { Action, Player } from './player';
 import { Coin, Row, TrackGenerator } from './track';
 
@@ -97,6 +97,15 @@ export class Game {
             p.state = 'dead';
             p.vy = -1;
             this.fell = true;
+            this.events.push({ t: 'death' });
+            return;
+          }
+          continue;
+        }
+        if (kind === 'laser') {
+          const near = row.z + LASER.halfD >= prev - CFG.halfD && row.z - LASER.halfD <= this.dist + CFG.halfD;
+          if (near && !this.dashing && laserOn(row, this.time) && Math.abs(p.x - (l - 1) * CFG.laneWidth) < LASER.halfW + CFG.halfW) {
+            p.state = 'dead';
             this.events.push({ t: 'death' });
             return;
           }

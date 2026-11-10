@@ -1,4 +1,4 @@
-import { CFG, Kind, difficultyAt, gapLength, pressureAt, speedAt } from './config';
+import { CFG, Kind, SCHEDULE, difficultyAt, gapLength, portalNear, pressureAt, speedAt, worldAt } from './config';
 import { Rng } from './rng';
 
 export interface Row {
@@ -8,6 +8,8 @@ export interface Row {
   cells: (Kind | null)[];
   /** Length (m) of the holes of this row. */
   gapLen: number;
+  /** 0 = SOLARIS, 1 = NEXUS: decides how the row is dressed and which traps it uses. */
+  world: number;
   /** Cells destroyed by a dash. */
   smashed: boolean[];
   /** Lane index the generator guarantees to be survivable. */
@@ -62,6 +64,18 @@ export class TrackGenerator {
   private addRow(): void {
     const r = this.rng;
     const z = this.nextZ;
+    // A dimensional portal: the stretch around it is free, with a line of crystals leading through the ring
+    const portal = portalNear(z);
+    if (portal !== null) {
+      for (let k = -20; k <= 20; k += 4) this.coins.push({ z: portal + k, lane: 1, y: 1, taken: false });
+      this.nextZ = portal + SCHEDULE.clear;
+      this.gapBefore = 3;
+      this.burstLeft = 0;
+      this.breather = false;
+      this.lastAction = null;
+      return;
+    }
+    const w = worldAt(z);
     const d = difficultyAt(z);
     const h = pressureAt(z);
     const prevSafe = this.safe;
@@ -81,19 +95,22 @@ export class TrackGenerator {
         if (r.next() < pAction) {
           // After a jump comes a slide (and the reverse) more often than not: no rhythm to settle into
           // 'low' and 'gap' are both jumps, 'high' is the slide
-          const jump = (): Kind => (z > 120 && r.next() < 0.4 ? 'gap' : 'low');
+          const jump = (): Kind => (z > 120 && r.next() < (w ? 0.55 : 0.4) ? 'gap' : 'low');
           const lastJump = this.lastAction === 'low' || this.lastAction === 'gap';
           cells[l] = this.lastAction && r.next() < 0.65 ? (lastJump ? 'high' : jump()) : r.next() < 0.5 ? jump() : 'high';
         }
       } else if (r.next() < pBlock) {
         const k = r.next();
-        cells[l] = k < 0.45 ? 'full' : k < 0.65 ? 'low' : k < 0.85 ? 'high' : z > 120 ? 'gap' : 'full';
+        // NEXUS swaps half of the walls for blinking lasers and opens more holes
+        cells[l] = w
+          ? (k < 0.25 ? 'full' : k < 0.55 ? 'laser' : k < 0.7 ? 'low' : k < 0.85 ? 'high' : 'gap')
+          : (k < 0.45 ? 'full' : k < 0.65 ? 'low' : k < 0.85 ? 'high' : z > 120 ? 'gap' : 'full');
       }
     }
     // Now and then the whole causeway is open: a chasm to jump, in any lane
-    if (z > 600 && r.next() < 0.04 + 0.08 * d) { cells[0] = cells[1] = cells[2] = 'gap'; }
+    if (z > 600 && r.next() < (0.04 + 0.08 * d) * (w ? 1.6 : 1)) { cells[0] = cells[1] = cells[2] = 'gap'; }
     this.lastAction = cells[this.safe] as Kind | null;
-    this.rows.push({ id: this.nextId++, z, cells, gapLen: gapLength(speedAt(z)), smashed: [false, false, false], safe: this.safe });
+    this.rows.push({ id: this.nextId++, z, cells, gapLen: gapLength(speedAt(z)), world: w, smashed: [false, false, false], safe: this.safe });
 
     // Fragments lead the eye towards the safe lane, then follow the required move.
     const safeCell = cells[this.safe];
@@ -138,7 +155,7 @@ export function validateRows(rows: Row[]): number {
     const shifts = Math.min(2, Math.floor((dt - CFG.slideTime) / (CFG.laneChangeTime + 0.07)));
     const next = [false, false, false];
     for (let l = 0; l < 3; l++) {
-      if (row.cells[l] === 'full') continue;
+      if (row.cells[l] === 'full' || row.cells[l] === 'laser') continue; // a laser may be on: count it as a wall
       for (let m = 0; m < 3; m++) if (reach[m] && Math.abs(l - m) <= shifts) next[l] = true;
     }
     if (!next.some(Boolean)) return row.id;

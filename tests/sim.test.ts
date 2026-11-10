@@ -15,7 +15,7 @@ function gameWith(cells: Row['cells'], z = 30): Game {
   const g = new Game(1);
   g.track.rows.length = 0;
   g.track.coins.length = 0;
-  g.track.rows.push({ id: 1, z, cells, gapLen: gapLength(speedAt(z)), smashed: [false, false, false], safe: 1 });
+  g.track.rows.push({ id: 1, z, cells, gapLen: gapLength(speedAt(z)), world: 0, smashed: [false, false, false], safe: 1 });
   return g;
 }
 function play(g: Game, until: number, script: (g: Game) => void = () => {}): void {
@@ -255,8 +255,9 @@ describe('trous dans la chaussée', () => {
       for (const early of [0.45, 0.3, 0.16]) {
         const g = new Game(1);
         g.track.rows.length = 0; g.track.coins.length = 0;
+        g.track.generateUntil = () => {}; // only the hand-placed hole
         const z = startDist + 80;
-        g.track.rows.push({ id: 1, z, cells: [null, 'gap', null], gapLen: L, smashed: [false, false, false], safe: 1 });
+        g.track.rows.push({ id: 1, z, cells: [null, 'gap', null], gapLen: L, world: 0, smashed: [false, false, false], safe: 1 });
         g.dist = startDist;
         let jumped = false;
         while (!g.dead && g.dist < z + 15) {

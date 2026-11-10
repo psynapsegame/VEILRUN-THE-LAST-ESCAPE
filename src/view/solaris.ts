@@ -1,7 +1,6 @@
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { CFG, GAP } from '../sim/config';
 import type { Row } from '../sim/track';
+import { GAP_N, cutHoles, fillHoles, makeHoleUniform, makeLipGeometry } from './holes';
 import { box, glowTexture } from './build';
 import { Banners } from './banners';
 import { hash, isCollapse } from './events';
@@ -18,8 +17,6 @@ import type { Particles } from './particles';
 /** SOLARIS — the golden antique city: sky, light, causeway and the recycling of kit pieces. */
 /** Where the sun sits in the sky (unit vector from the runner towards it). */
 export const SUN_DIR = new THREE.Vector3(-0.18, 0.2, -1).normalize();
-/** Holes cut into the road at the same time (rows are visible about 125 m ahead). */
-const GAP_N = 20;
 /** Distance (m) beyond which each sculpted piece is drawn with its very light version. */
 const LOD_DIST = { colossus: 80, sphinx: 70, head: 50, brazier: 45, palm: 55, pylon: 90 } as const;
 const SLOT = 14; // metres between roadside props
@@ -42,7 +39,7 @@ export class Solaris {
   private propBanners: Anchor[][];
   private banners = new Banners();
   /** Rectangles [xMin, xMax, zMin, zMax] of the holes in the road, in scene coordinates. */
-  private gapUniform = { value: new Float32Array(GAP_N * 4) };
+  private gapUniform = makeHoleUniform();
   /** Stone edges drawn around each hole so the causeway has thickness. */
   private lips: THREE.Mesh[] = [];
   private devourer: Devourer;
@@ -61,6 +58,8 @@ export class Solaris {
     return this.curb.material;
   }
   readonly sun: THREE.DirectionalLight;
+  /** Every light of this world, switched off when the other world is on. */
+  readonly lights: THREE.Light[];
   readonly glow = glowTexture();
   private sky: THREE.ShaderMaterial;
   private far: THREE.BufferGeometry[];
@@ -85,7 +84,8 @@ export class Solaris {
       })(),
     ];
     // The environment map provides the ambient light; the hemisphere only lifts the shadows a little.
-    scene.add(new THREE.HemisphereLight(0xcfe0ff, 0x8a6a4a, 0.35));
+    const hemi = new THREE.HemisphereLight(0xcfe0ff, 0x8a6a4a, 0.35);
+    scene.add(hemi);
     const sun = (this.sun = new THREE.DirectionalLight(0xffd29a, 3.6));
     sun.position.set(-10, 11, -7);
     sun.target.position.set(0, 0, -14);
@@ -97,6 +97,7 @@ export class Solaris {
     sc.left = -11; sc.right = 11; sc.top = 26; sc.bottom = -16; sc.near = 1; sc.far = 50;
     sun.shadow.bias = -0.0015;
     sun.shadow.normalBias = 0.04;
+    this.lights = [hemi, sun];
 
     // Sky dome: violet zenith melting into a golden horizon, with the sun ahead
     const sky = new THREE.Mesh(
@@ -131,19 +132,7 @@ export class Solaris {
     this.sky = sky.material as THREE.ShaderMaterial;
     this.group.add(sky);
 
-    // Holes: the road and its gold inlays discard every fragment inside a hole, so the city floor shows through
-    const cutGaps = (mat: THREE.Material): void => {
-      mat.onBeforeCompile = sh => {
-        sh.uniforms.uGaps = this.gapUniform;
-        sh.vertexShader = sh.vertexShader
-          .replace('#include <common>', '#include <common>\nvarying vec2 vGapXZ;')
-          .replace('#include <begin_vertex>', '#include <begin_vertex>\nvGapXZ = (modelMatrix * vec4(position, 1.0)).xz;');
-        sh.fragmentShader = sh.fragmentShader
-          .replace('#include <common>', `#include <common>\nvarying vec2 vGapXZ;\nuniform vec4 uGaps[${GAP_N}];`)
-          .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
-            for (int i = 0; i < ${GAP_N}; i++) { vec4 g = uGaps[i]; if (vGapXZ.x > g.x && vGapXZ.x < g.y && vGapXZ.y > g.z && vGapXZ.y < g.w) discard; }`);
-      };
-    };
+    const cutGaps = (mat: THREE.Material): void => cutHoles(mat, this.gapUniform);
     // Road: polished cream slabs with gold lane inlays, between rough-hewn curbs
     this.road = SURFACES.road();
     cutGaps(this.road.material);
@@ -160,21 +149,9 @@ export class Solaris {
       inlay.position.set(x, 0.003, -100);
       this.group.add(inlay);
     }
-    // One open box of stone per hole (unit length, stretched to the hole's length)
+    // Stone edges around each hole
     {
-      const D = 1.7, H = GAP.halfW;
-      const parts = [
-        new THREE.PlaneGeometry(2 * H, D).translate(0, -D / 2, 0.5), // far edge
-        new THREE.PlaneGeometry(2 * H, D).translate(0, -D / 2, -0.5), // near edge
-        new THREE.PlaneGeometry(1, D).rotateY(Math.PI / 2).translate(-H, -D / 2, 0), // sides
-        new THREE.PlaneGeometry(1, D).rotateY(Math.PI / 2).translate(H, -D / 2, 0),
-      ];
-      for (const g of parts) {
-        const uv = g.attributes.uv;
-        for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * 1.6, uv.getY(i) * 1.2);
-        g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count * 3).fill(0.45), 3));
-      }
-      const geo = mergeGeometries(parts.map(g => g.toNonIndexed()))!;
+      const geo = makeLipGeometry();
       const mat = this.wall.material.clone();
       mat.side = THREE.DoubleSide;
       for (let i = 0; i < GAP_N; i++) {
@@ -312,26 +289,7 @@ export class Solaris {
 
   /** Cut this frame's holes into the road and stand their stone edges around them. */
   updateGaps(rows: Row[], dist: number): void {
-    const R = this.gapUniform.value;
-    R.fill(0);
-    let n = 0;
-    for (const row of rows) {
-      const zc = dist - row.z; // scene z: negative ahead of the runner
-      if (zc > 14) continue;
-      if (zc < -125) break;
-      for (let l = 0; l < 3; l++) {
-        if (row.cells[l] !== 'gap' || n >= GAP_N) continue;
-        const cx = (l - 1) * CFG.laneWidth;
-        R[n * 4] = cx - GAP.halfW; R[n * 4 + 1] = cx + GAP.halfW;
-        R[n * 4 + 2] = zc - row.gapLen / 2; R[n * 4 + 3] = zc + row.gapLen / 2;
-        const lip = this.lips[n];
-        lip.visible = true;
-        lip.position.set(cx, 0, zc);
-        lip.scale.set(1, 1, row.gapLen);
-        n++;
-      }
-    }
-    for (let i = n; i < this.lips.length; i++) this.lips[i].visible = false;
+    fillHoles(this.gapUniform, this.lips, rows, dist);
   }
 
   /** Stand a column on the road-side corner of the one block per 476 m chosen for a collapse. */

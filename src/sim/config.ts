@@ -22,9 +22,13 @@ export const CFG = {
   minRowTime: 0.85,
 } as const;
 
-/** 'gap' is a hole in the causeway: jump over it, or fall. The others are solid obstacles. */
-export type Kind = 'low' | 'high' | 'full' | 'gap';
-export type SolidKind = Exclude<Kind, 'gap'>;
+/**
+ * 'gap' is a hole in the causeway: jump over it, or fall.
+ * 'laser' is a blinking laser grid (NEXUS): lethal only while it is on, and the dash passes through it.
+ * The others are solid obstacles.
+ */
+export type Kind = 'low' | 'high' | 'full' | 'gap' | 'laser';
+export type SolidKind = 'low' | 'high' | 'full';
 
 /** Collision volumes per obstacle kind (y range, half depth, half width). */
 export const OBSTACLE: Record<SolidKind, { y0: number; y1: number; halfD: number; halfW: number }> = {
@@ -35,6 +39,33 @@ export const OBSTACLE: Record<SolidKind, { y0: number; y1: number; halfD: number
   // The guardian idol is about 1 m wide: the collision matches it, with a little margin in the runner's favour
   full: { y0: 0, y1: 3.2, halfD: 0.45, halfW: 0.62 },
 };
+
+/** Laser grid: on for 1.25 s every 2.2 s, a different phase per row. It never sits in the safe lane. */
+export const LASER = { period: 2.2, on: 1.25, halfD: 0.25, halfW: 0.95 };
+export function laserOn(row: { id: number }, time: number): boolean {
+  return (time + row.id * 0.61) % LASER.period < LASER.on;
+}
+
+/**
+ * Dimensional portals. The first one is at `first` metres, then one every `every` metres; each one switches
+ * between SOLARIS (world 0) and NEXUS (world 1). No obstacle within `clear` metres of a portal.
+ * (`?portal=300` in the address bar moves the first portal closer, for testing.)
+ */
+export const SCHEDULE = { first: 1500, every: 2000, clear: 32 };
+export const WORLD_NAMES = ['SOLARIS', 'NEXUS'] as const;
+/** Which world a given distance belongs to. */
+export function worldAt(z: number): number {
+  return z < SCHEDULE.first ? 0 : (Math.floor((z - SCHEDULE.first) / SCHEDULE.every) + 1) % 2;
+}
+/** Position of the portal nearest to `z`. */
+export function portalNearest(z: number): number {
+  return SCHEDULE.first + Math.max(0, Math.round((z - SCHEDULE.first) / SCHEDULE.every)) * SCHEDULE.every;
+}
+/** The portal at `z` +- margin (default: the clear zone), or null. */
+export function portalNear(z: number, margin = SCHEDULE.clear): number | null {
+  const p = portalNearest(z);
+  return Math.abs(z - p) < margin ? p : null;
+}
 
 /** A hole is 2 m wide (a lane is 2.2 m) and the runner falls when he is on the ground over it. */
 export const GAP = { halfW: 1.0, edge: 0.15 };

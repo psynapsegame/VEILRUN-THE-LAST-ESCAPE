@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CFG, RAMP, difficultyAt, pressureAt, speedAt } from '../src/sim/config';
+import { CFG, RAMP, difficultyAt, portalNearest, pressureAt, speedAt } from '../src/sim/config';
 import { Game } from '../src/sim/game';
 import { botStep } from '../src/sim/bot';
 import { TrackGenerator, validateRows, Row } from '../src/sim/track';
@@ -18,6 +18,8 @@ function window(a: number, b: number): Window {
     for (let i = 1; i < rows.length; i++) {
       const r = rows[i];
       if (r.z < a || r.z >= b) continue;
+      const P = portalNearest(r.z);
+      if (rows[i - 1].z < P && P <= r.z) continue; // the free stretch around a portal is not a spacing choice
       const gap = (r.z - rows[i - 1].z) / speedAt(r.z);
       gaps += gap; n++;
       if (r.cells[r.safe]) act++;

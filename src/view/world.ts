@@ -5,7 +5,7 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { loadEnvironment } from './materials';
-import { CFG, SolidKind } from '../sim/config';
+import { CFG, SolidKind, laserOn, portalNearest, worldAt } from '../sim/config';
 import type { GameEvent } from '../sim/game';
 import type { Player } from '../sim/player';
 import type { Coin, Row } from '../sim/track';
@@ -14,6 +14,8 @@ import { Particles } from './particles';
 import { Runner } from './runner';
 import { obstacleGeometry } from './kit';
 import { PAL, SUN_DIR, Solaris } from './solaris';
+import { Nexus, nexusObstacle } from './nexus';
+import { Portal } from './portal';
 import type { Statues } from './statues';
 
 /** What the renderer needs from a run (the Game satisfies it; so does the menu's idle scene). */
@@ -24,6 +26,8 @@ export interface ViewState {
   dashing: boolean;
   /** The run ended by falling into a hole. */
   fell?: boolean;
+  /** Game clock (s): drives the blinking lasers. */
+  time: number;
   track: { rows: Row[]; coins: Coin[] };
 }
 
@@ -36,6 +40,14 @@ export class World {
   readonly scene = new THREE.Scene();
   readonly camera = new THREE.PerspectiveCamera(62, 1, 0.1, 600);
   private env: Solaris;
+  private nexus: Nexus;
+  private portal: Portal;
+  private fogSolaris: THREE.FogExp2;
+  private bloom!: UnrealBloomPass;
+  /** World being shown: 0 = SOLARIS, 1 = NEXUS. */
+  worldIdx = 0;
+  /** 0..1 white-out around a portal (the page overlays it on the screen). */
+  flash = 0;
   private runner = new Runner();
   private composer: EffectComposer;
   private post = true;
@@ -50,7 +62,8 @@ export class World {
   private sc = new THREE.Vector3();
   private shadow: THREE.Mesh;
   private parts = new Particles();
-  private pools = new Map<SolidKind, THREE.Mesh[]>();
+  /** Pooled obstacle meshes by `world:kind`, e.g. '0:low', '1:laser'. */
+  private pools = new Map<string, THREE.Mesh[]>();
   /** Every pooled mesh of each obstacle kind, so the sculpted models can replace the provisional ones. */
   private allMeshes: Record<SolidKind, THREE.Mesh[]> = { low: [], high: [], full: [] };
   /** Full-detail and far geometry per obstacle kind, once the sculpted models are loaded. */
@@ -82,6 +95,10 @@ export class World {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 0.8;
     this.env = new Solaris(this.scene);
+    this.fogSolaris = this.scene.fog as THREE.FogExp2;
+    this.nexus = new Nexus(this.scene);
+    this.portal = new Portal(this.env.glow);
+    this.scene.add(this.portal.group);
     void loadEnvironment(this.renderer).then(env => {
       this.scene.environment = env;
       this.scene.environmentIntensity = 0.9;
@@ -106,7 +123,8 @@ export class World {
       void x;
       this.onRumble?.();
     };
-    this.composer.addPass(new UnrealBloomPass(new THREE.Vector2(256, 256), 0.16, 0.5, 1.0)); // a hint of glow, never a haze
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.16, 0.5, 1.0); // a hint of glow, never a haze
+    this.composer.addPass(this.bloom);
     this.composer.addPass(new OutputPass());
     this.composer.addPass(new ShaderPass({
       uniforms: { tDiffuse: { value: null } },
@@ -154,14 +172,16 @@ export class World {
         const m = new THREE.Mesh(geo, mat);
         m.visible = false;
         m.castShadow = true;
+        m.userData = { world: 0, kind: k, key: `0:${k}` };
         if (k === 'high') m.add(halo(PAL.cyan, 0, 2.4, 0.1, 1.9));
         if (k === 'full') m.add(halo(PAL.cyan, 0, 2.86, 0.42, 0.8));
         this.allMeshes[k].push(m);
         this.scene.add(m);
         pool.push(m);
       }
-      this.pools.set(k, pool);
+      this.pools.set(`0:${k}`, pool);
     }
+    this.buildNexusObstacles();
 
     void this.env.statuesReady.then(st => this.useObstacles(st, halo));
 
@@ -235,6 +255,52 @@ export class World {
     this.idol = true;
   }
 
+  /** Shadow maps only in SOLARIS and only on the better tiers; everywhere else the hero keeps a blob shadow. */
+  private applyShadowMode(): void {
+    const maps = this.worldIdx === 0 && this.quality <= 2;
+    this.env.sun.castShadow = maps;
+    this.shadow.visible = !maps;
+  }
+
+  /** Show one world and hide the other: lights, fog, reflections, exposure and glow all follow. */
+  private setWorld(i: number): void {
+    this.worldIdx = i;
+    const night = i === 1;
+    this.env.group.visible = !night;
+    for (const l of this.env.lights) l.visible = !night;
+    this.nexus.group.visible = night;
+    for (const l of this.nexus.lights) l.visible = night;
+    this.scene.fog = night ? this.nexus.fog : this.fogSolaris;
+    this.scene.environmentIntensity = night ? 0.2 : 0.9;
+    this.renderer.toneMappingExposure = night ? 0.95 : 0.8;
+    this.bloom.strength = night ? 0.5 : 0.16;
+    this.bloom.radius = night ? 0.6 : 0.5;
+    this.bloom.threshold = night ? 0.9 : 1.0;
+    this.applyShadowMode();
+  }
+
+  /** Obstacle models of NEXUS: provisional, built from code, in the same pools as SOLARIS' sculpted ones. */
+  private buildNexusObstacles(): void {
+    const kinds: (SolidKind | 'laser')[] = ['low', 'high', 'full', 'laser'];
+    for (const k of kinds) {
+      const { body, beams } = nexusObstacle(k);
+      const pool: THREE.Mesh[] = [];
+      for (let i = 0; i < 14; i++) {
+        const m = new THREE.Mesh(body, this.nexus.mats);
+        m.visible = false;
+        m.userData = { world: 1, kind: k, key: `1:${k}` };
+        if (beams) {
+          const b = new THREE.Mesh(beams, this.nexus.mats);
+          m.add(b);
+          m.userData.beams = b;
+        }
+        this.scene.add(m);
+        pool.push(m);
+      }
+      this.pools.set(`1:${k}`, pool);
+    }
+  }
+
   /**
    * Graphics tiers, from the best picture to the lightest. Effects go first and sharpness last:
    *   0 shafts + glow + grade, shadows, full resolution     3 blob shadow, no effects, 1.6x
@@ -247,9 +313,7 @@ export class World {
     this.renderer.setPixelRatio(Math.min(dpr, [2, 2, 2, 1.6, 1.3][this.quality]));
     this.post = this.quality <= 1;
     this.rays.enabled = this.quality === 0;
-    const shadows = this.quality <= 2;
-    this.env.sun.castShadow = shadows;
-    this.shadow.visible = !shadows;
+    this.applyShadowMode();
     this.resize();
   }
   get maxQuality(): number {
@@ -262,13 +326,14 @@ export class World {
     for (const [id, ms] of this.live) { this.release(ms); this.live.delete(id); }
     this.lastDist = 0;
     this.shake = 0;
+    this.setWorld(0);
   }
   private release(ms: (THREE.Mesh | null)[]): void {
     for (let l = 0; l < 3; l++) {
       const m = ms[l];
       if (!m) continue;
       m.visible = false;
-      this.pools.get(m.userData.kind)!.push(m);
+      this.pools.get(m.userData.key)!.push(m);
     }
   }
 
@@ -292,7 +357,13 @@ export class World {
       case 'smash': {
         const ms = this.live.get(ev.row.id);
         const m = ms?.[ev.lane];
-        if (m && ms) { m.visible = false; this.pools.get(m.userData.kind)!.push(m); ms[ev.lane] = null; }
+        if (m && ms) { m.visible = false; this.pools.get(m.userData.key)!.push(m); ms[ev.lane] = null; }
+        if (this.worldIdx === 1) { // sparks, not stone
+          P.burst(40, (ev.lane - 1) * CFG.laneWidth, 1.4, -1, 10, 1, 0.3, 0.9, 0.7);
+          P.burst(26, (ev.lane - 1) * CFG.laneWidth, 1.4, -1, 8, 0.2, 0.9, 1, 0.6);
+          this.shake = 0.5;
+          break;
+        }
         P.burst(34, (ev.lane - 1) * CFG.laneWidth, 1.2, -1, 9, 1, 0.8, 0.5, 0.8, 14);
         for (let i = 0; i < 14; i++) {
           const d = this.deb, j = d.head * 3;
@@ -323,7 +394,17 @@ export class World {
     const p = s.player;
     const scroll = s.dist - this.lastDist;
     this.lastDist = s.dist;
-    this.env.update(s.dist, dt, this.parts);
+    // Portals: the world changes at the instant the runner crosses the ring, hidden behind a white-out
+    const P = portalNearest(s.dist);
+    const rel = s.dist - P; // negative before the ring
+    const w = worldAt(s.dist);
+    if (w !== this.worldIdx) this.setWorld(w);
+    const rise = Math.min(1, Math.max(0, (rel + 12) / 12));
+    const fall = Math.min(1, Math.max(0, rel / 18));
+    this.flash = rel < 0 ? rise * rise : 1 - Math.pow(fall * fall * (3 - 2 * fall), 0.7);
+    this.portal.update(-rel, worldAt(P + 1), this.t);
+    if (this.worldIdx === 0) this.env.update(s.dist, dt, this.parts);
+    else this.nexus.update(s.dist, dt);
 
     // Obstacles: bind pooled meshes to the rows in view
     for (const row of s.track.rows) {
@@ -334,9 +415,8 @@ export class World {
         for (let l = 0; l < 3; l++) {
           const kind = row.cells[l];
           if (!kind || kind === 'gap' || row.smashed[l]) continue; // holes are cut into the road, not placed
-          const m = this.pools.get(kind)!.pop();
+          const m = this.pools.get(`${row.world}:${kind}`)?.pop();
           if (!m) continue;
-          m.userData.kind = kind;
           m.position.x = (l - 1) * CFG.laneWidth;
           m.visible = true;
           ms[l] = m;
@@ -347,7 +427,9 @@ export class World {
       for (const m of ms) {
         if (!m) continue;
         m.position.z = z;
-        if (this.lods) m.geometry = z < -62 ? this.lods[m.userData.kind as SolidKind].lod : this.lods[m.userData.kind as SolidKind].geo;
+        const beams = m.userData.beams as THREE.Object3D | undefined;
+        if (beams) beams.visible = laserOn(row, s.time); // blinking laser grid
+        if (this.lods && m.userData.world === 0) m.geometry = z < -62 ? this.lods[m.userData.kind as SolidKind].lod : this.lods[m.userData.kind as SolidKind].geo;
       }
     }
     for (const [id, ms] of this.live) {
@@ -371,7 +453,8 @@ export class World {
     // Runner
     this.runner.root.position.set(p.x, p.y, 0);
     this.runner.update(dt, { state: p.state, vy: p.vy, lean: p.lean, speed: s.speed, dashing: s.dashing, fell: s.fell });
-    this.env.updateGaps(s.track.rows, s.dist);
+    if (this.worldIdx === 0) this.env.updateGaps(s.track.rows, s.dist);
+    else this.nexus.updateGaps(s.track.rows, s.dist);
     this.shadow.position.x = p.x;
     const sh = 1 / (1 + p.y * 0.7);
     this.shadow.scale.setScalar(sh);
@@ -385,7 +468,7 @@ export class World {
       for (let i = 0; i < 3; i++)
         this.parts.emit(p.x + (Math.random() - 0.5) * 0.7, p.y + 0.3 + Math.random() * 1.3, 0.2, 0, 0, 0, 0.3, 0.85, 1, 0.35);
     // A few motes of golden dust far ahead: sparse on purpose, they only hint at the air
-    if (Math.random() < dt * 5)
+    if (this.worldIdx === 0 && Math.random() < dt * 5)
       this.parts.emit((Math.random() - 0.5) * 20, 1 + Math.random() * 6, -45 - Math.random() * 50, 0.25, 0.1, 0, 0.5, 0.38, 0.2, 4.5, 0, true);
     this.parts.update(dt, scroll);
     const d = this.deb;
@@ -418,7 +501,7 @@ export class World {
     this.camera.position.set(this.camX + sx, 3.3 + this.camY + sy, 5.4 - speedF * 0.4);
     this.camera.lookAt(this.camX * 0.9 + p.x * 0.12, 1.25 + this.camY * 0.6, -8);
     this.camera.rotation.z += -p.lean * 0.035;
-    const fov = this.baseFov + speedF * 7 + this.fovKick * 9 + (s.dashing ? 5 : 0);
+    const fov = this.baseFov + speedF * 7 + this.fovKick * 9 + (s.dashing ? 5 : 0) + this.flash * 16;
     if (Math.abs(fov - this.camera.fov) > 0.05) {
       this.camera.fov += (fov - this.camera.fov) * (1 - Math.exp(-dt * 6));
       this.camera.updateProjectionMatrix();
