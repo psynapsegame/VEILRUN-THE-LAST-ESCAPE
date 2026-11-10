@@ -1,6 +1,10 @@
 import * as THREE from 'three';
 import colosseAsset from '../assets/statues/colosse.glb';
 import sphinxAsset from '../assets/statues/sphinx.glb';
+import headAsset from '../assets/statues/tete.glb';
+import brazierAsset from '../assets/statues/brasero.glb';
+import idolAsset from '../assets/statues/idole.glb';
+import idolLodAsset from '../assets/statues/idole_lod.glb';
 import { loadGlb } from './glb';
 import { loading } from './loading';
 
@@ -12,6 +16,11 @@ export interface Statue {
 export interface Statues {
   colossus: Statue;
   sphinx: Statue;
+  head: Statue;
+  brazier: Statue;
+  /** The guardian idol (obstacle), at full detail and as a very light version for the far rows. */
+  idol: Statue;
+  idolLod: Statue;
 }
 
 async function one(asset: string | Uint8Array): Promise<Statue> {
@@ -30,5 +39,9 @@ async function one(asset: string | Uint8Array): Promise<Statue> {
 }
 
 export function loadStatues(): Promise<Statues> {
-  return loading.track(Promise.all([one(colosseAsset), one(sphinxAsset)]).then(([colossus, sphinx]) => ({ colossus, sphinx })));
+  return loading.track(
+    Promise.all([colosseAsset, sphinxAsset, headAsset, brazierAsset, idolAsset, idolLodAsset].map(one)).then(
+      ([colossus, sphinx, head, brazier, idol, idolLod]) => ({ colossus, sphinx, head, brazier, idol, idolLod }),
+    ),
+  );
 }

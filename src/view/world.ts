@@ -14,6 +14,7 @@ import { Particles } from './particles';
 import { Runner } from './runner';
 import { obstacleGeometry } from './kit';
 import { PAL, SUN_DIR, Solaris } from './solaris';
+import type { Statues } from './statues';
 
 /** What the renderer needs from a run (the Game satisfies it; so does the menu's idle scene). */
 export interface ViewState {
@@ -48,6 +49,9 @@ export class World {
   private shadow: THREE.Mesh;
   private parts = new Particles();
   private pools = new Map<Kind, THREE.Mesh[]>();
+  /** Every pooled mesh of the 'full' obstacle, so the sculpted idol can replace the provisional model. */
+  private fullMeshes: THREE.Mesh[] = [];
+  private idol: { geo: THREE.BufferGeometry; lod: THREE.BufferGeometry } | null = null;
   private live = new Map<number, (THREE.Mesh | null)[]>();
   private coins: THREE.InstancedMesh;
   private m4 = new THREE.Matrix4();
@@ -150,12 +154,17 @@ export class World {
         m.visible = false;
         m.castShadow = true;
         if (k === 'high') m.add(halo(PAL.cyan, 0, 2.4, 0.1, 1.9));
-        if (k === 'full') m.add(halo(PAL.cyan, 0, 2.86, 0.42, 0.8));
+        if (k === 'full') {
+          m.add(halo(PAL.cyan, 0, 2.86, 0.42, 0.8));
+          this.fullMeshes.push(m);
+        }
         this.scene.add(m);
         pool.push(m);
       }
       this.pools.set(k, pool);
     }
+
+    void this.env.statuesReady.then(st => this.useIdol(st, halo));
 
     this.coins = new THREE.InstancedMesh(
       new THREE.OctahedronGeometry(0.3),
@@ -185,6 +194,22 @@ export class World {
     this.camera.aspect = w / h;
     this.baseFov = w < h ? 64 : 52;
     this.camera.updateProjectionMatrix();
+  }
+
+  /**
+   * The guardian idol replaces the provisional 'full' obstacle. It stands 2.7 m tall on its stepped pedestal,
+   * inside the 1.6 x 0.9 m collision volume, and faces the runner. Far rows use a very light version.
+   */
+  private useIdol(st: Statues, halo: (color: number, x: number, y: number, z: number, size: number) => THREE.Sprite): void {
+    const S = 1.4;
+    this.idol = { geo: st.idol.geometry, lod: st.idolLod.geometry };
+    for (const m of this.fullMeshes) {
+      m.geometry = st.idol.geometry;
+      m.material = st.idol.material;
+      m.scale.setScalar(S);
+      for (const c of [...m.children]) m.remove(c);
+      m.add(halo(PAL.cyan, 0, 1.8, 0.18, 0.6)); // the turquoise gem on the forehead (model units: scaled with the mesh)
+    }
   }
 
   /** Step render resolution down/up (adaptive quality). Returns the new pixel ratio. */
@@ -291,7 +316,11 @@ export class World {
         this.live.set(row.id, ms);
       }
       const z = s.dist - row.z;
-      for (const m of ms) if (m) m.position.z = z;
+      for (const m of ms) {
+        if (!m) continue;
+        m.position.z = z;
+        if (this.idol && m.userData.kind === 'full') m.geometry = z < -62 ? this.idol.lod : this.idol.geo;
+      }
     }
     for (const [id, ms] of this.live) {
       const m = ms[0] || ms[1] || ms[2];

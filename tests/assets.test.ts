@@ -21,11 +21,16 @@ describe('budget des ressources 3D', () => {
     for (const c of ['Sprint_Loop', 'Jump_Loop', 'Slide_Loop', 'Roll', 'Death01']) expect(h.clips).toContain(c);
     expect(h.size).toBeLessThan(2.5 * 1048576);
   });
-  it.each(['colosse', 'sphinx'])('la statue %s : ≤ 12 000 triangles, textures ≤ 1024 px, ≤ 1,5 Mo', async name => {
+  it.each(['colosse', 'sphinx', 'tete', 'brasero', 'idole'])('la statue %s : ≤ 12 000 triangles, textures ≤ 1024 px, ≤ 1,5 Mo', async name => {
     const s = await stats(`src/assets/statues/${name}.glb`);
     expect(s.tris).toBeLessThanOrEqual(12000);
     expect(s.maxTex).toBeLessThanOrEqual(1024);
     expect(s.size).toBeLessThan(1.5 * 1048576);
+  });
+  it('l’idole lointaine (niveau de détail) : ≤ 2 500 triangles, textures ≤ 512 px', async () => {
+    const s = await stats('src/assets/statues/idole_lod.glb');
+    expect(s.tris).toBeLessThanOrEqual(2500);
+    expect(s.maxTex).toBeLessThanOrEqual(512);
   });
   it('les images 2D livrées restent légères (≤ 300 Ko chacune)', () => {
     for (const f of readdirSync('src/assets/art')) expect(statSync(`src/assets/art/${f}`).size, f).toBeLessThan(300 * 1024);

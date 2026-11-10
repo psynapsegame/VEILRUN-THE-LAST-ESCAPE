@@ -4,7 +4,7 @@ Réglages conseillés pour chaque génération : style **réaliste / sculpture**
 
 Les descriptions sont en anglais car l'outil les comprend mieux. Elles décrivent des créations originales : ne pas y ajouter de noms de dieux, de personnages ou de jeux existants.
 
-> **État (10/11/2026)** : colosse et sphinx sont livrés et intégrés au jeu (déposés dans `assets-src/`, allégés par `tools/build-statue.mjs`). Reste : tête brisée, brasero, idole gardienne. Nom des fichiers à déposer : `assets-src/Tete.glb`, `Brasero.glb`, `Idole.glb`.
+> **État (10/11/2026)** : les cinq statues (colosse, sphinx, tête brisée, brasero, idole gardienne) sont livrées et intégrées au jeu (déposées dans `assets-src/`, allégées par `tools/build-statue.mjs`).
 >
 > **Retour sur le colosse** : très belle sculpture, mais le masque est un ovale lisse qui paraît inachevé de près. De loin il fonctionne comme un gardien sans visage. Pour une seconde version, remplacer dans la description « smooth featureless oval mask » par « a serene carved face with almond-shaped eyes, a straight nose and a calm closed mouth, partly covered by a smooth golden mask ».
 

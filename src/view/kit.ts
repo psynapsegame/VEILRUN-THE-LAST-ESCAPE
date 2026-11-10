@@ -85,16 +85,6 @@ function palm(b: Builder, x: number, z: number, h: number, lean: number, y0 = 0)
   b.add(new THREE.SphereGeometry(0.36, 8, 6), PAL.trunkDark, px, py, z);
 }
 
-/** Great brazier; returns nothing, the flame halo is added by the scene at y = 5.2. */
-function brazier(b: Builder, x: number, z: number): void {
-  b.add(box(2.4, 0.5, 2.4), PAL.stoneDark, x, 0.25, z).add(box(1.8, 0.5, 1.8), PAL.stone, x, 0.75, z);
-  const stem: [number, number][] = [[0, 0], [0.55, 0], [0.42, 0.3], [0.3, 1.2], [0.36, 2.2], [0.5, 2.6], [0, 2.6]];
-  b.add(new THREE.LatheGeometry(stem.map(q => new THREE.Vector2(q[0], q[1])), 12), PAL.stoneLight, x, 1, z);
-  const bowl: [number, number][] = [[0, 0], [0.5, 0], [1.1, 0.35], [1.45, 0.85], [1.35, 0.9], [0, 0.45]];
-  b.add(new THREE.LatheGeometry(bowl.map(q => new THREE.Vector2(q[0], q[1])), 16), PAL.gold, x, 3.6, z);
-  b.add(new THREE.ConeGeometry(0.75, 1.9, 7), PAL.fire, x, 5.1, z).add(new THREE.ConeGeometry(0.4, 1.3, 6), PAL.ember, x + 0.1, 5.0, z + 0.05);
-}
-
 /** Where a cloth banner hangs: top-centre position, size, facing (rotation about Y) and colour index. */
 export type Anchor = [x: number, y: number, z: number, w: number, h: number, ry: number, colour: number];
 const ROAD = Math.PI / 2; // facing the road
@@ -120,7 +110,7 @@ const FRIEZE = [0, 0, 1, 0.5] as const;
  * `far`); x, y, z are in the piece's local frame (+x towards the road); statues face +z, towards the runner.
  */
 export interface StatuePlacement {
-  id: 'colossus' | 'sphinx';
+  id: 'colossus' | 'sphinx' | 'head' | 'brazier';
   far: boolean;
   index: number;
   x: number;
@@ -133,6 +123,8 @@ export const STATUES: StatuePlacement[] = [
   { id: 'colossus', far: false, index: 4, x: -4.2, y: 0.9, z: 0, scale: 7, ry: 0.3 },
   { id: 'sphinx', far: false, index: 8, x: -1.7, y: 0.82, z: 0, scale: 4.8, ry: 0.12 },
   { id: 'colossus', far: true, index: 2, x: 0, y: 4.9, z: 0, scale: 12.5, ry: 0.3 },
+  { id: 'head', far: false, index: 6, x: -3.6, y: -0.12, z: 0.4, scale: 2.7, ry: 0.5 },
+  { id: 'brazier', far: false, index: 1, x: 0.2, y: 0.55, z: 0, scale: 2.4, ry: 0 },
 ];
 
 /** Roadside pieces. `fire[i]` is the flame height of piece i (0 = none), `banners[i]` its cloth anchors. */
@@ -159,14 +151,16 @@ export function sideProps(): { geos: THREE.BufferGeometry[]; fire: number[]; ban
   { // 1: great brazier flanked by small obelisks
     const b = new Builder();
     platform(b);
-    brazier(b, 0, 0);
+    // Plinth for the sculpted brazier (4.6 m tall); the flames rise from its bowl
+    b.add(box(4.2, 0.45, 4.2), PAL.stoneDark, 0.2, 0.225, 0).add(box(4.4, 0.1, 4.4), PAL.gold, 0.2, 0.5, 0);
+    b.add(new THREE.ConeGeometry(1.0, 2.6, 8), PAL.fire, 0.2, 5.4, 0).add(new THREE.ConeGeometry(0.55, 1.8, 7), PAL.ember, 0.3, 5.3, 0.05);
     obelisk(b, -1.5, -4, 4.2, 0.8);
     obelisk(b, -1.5, 4, 4.2, 0.8);
     b.add(box(0.8, 3.6, 10), PAL.stone, -5.5, 1.8, 0);
     dentils(b, -5.05, 3.4, 0, 9.6, 14);
     cornice(b, -5.5, 3.6, 0, 0.8, 10);
     b.panel(-5.07, 1.65, 0, 8.8, 2.2, FRIEZE);
-    push(b, 5.2);
+    push(b, 5.7);
   }
   { // 2: grand staircase rising to a portico
     const b = new Builder();
@@ -213,17 +207,18 @@ export function sideProps(): { geos: THREE.BufferGeometry[]; fire: number[]; ban
     }
     push(b);
   }
-  { // 6: ruins — broken columns and fallen blocks
+  { // 6: ruins — a colossal head fallen in the rubble among broken columns
     const b = new Builder();
     platform(b);
     column(b, 0.2, -3.8, 6.8, 0.58);
-    for (const [px, pz, h] of [[0.2, 0, 2.6], [0.2, 3.8, 4.1], [-3, -2, 1.5]] as const) {
+    for (const [px, pz, h] of [[0.2, 4.2, 3.4], [-8.4, -3.9, 2.3], [-8.2, 3.9, 4.6]] as const) {
       b.add(box(1.6, 0.25, 1.6), PAL.stone, px, 0.12, pz).add(new THREE.CylinderGeometry(0.5, 0.58, h, 14), PAL.stoneLight, px, 0.25 + h / 2, pz);
     }
-    b.add(new THREE.CylinderGeometry(0.5, 0.56, 3, 14), PAL.stoneLight, -2.6, 0.55, 2.6, 0, 0.5, Math.PI / 2)
-      .add(box(1.3, 0.9, 1.1), PAL.stoneDark, -1.6, 0.45, -4.2, 0.1, 0.6, 0.15)
-      .add(box(0.9, 0.6, 0.8), PAL.stone, -4.4, 0.3, 0.2, 0, 1, 0.2)
-      .add(box(2.4, 0.7, 1.2), PAL.stoneLight, -4.6, 0.6, -3.4, 0.25, 0.3, 0);
+    b.add(new THREE.CylinderGeometry(0.5, 0.56, 3, 14), PAL.stoneLight, -2.4, 0.55, -4.3, 0, 0.5, Math.PI / 2)
+      .add(box(1.3, 0.9, 1.1), PAL.stoneDark, -7, 0.45, 0.4, 0.1, 0.6, 0.15)
+      .add(box(0.9, 0.6, 0.8), PAL.stone, -0.6, 0.3, 3.2, 0, 1, 0.2)
+      .add(box(2.4, 0.7, 1.2), PAL.stoneLight, -6.2, 0.6, -3.4, 0.25, 0.3, 0)
+      .add(box(1.1, 0.5, 0.9), PAL.stoneDark, -2.2, 0.25, 4.6, 0, 0.4, 0.1);
     push(b);
   }
   { // 7: no platform — a watch tower rising from the city floor, with open views on both sides

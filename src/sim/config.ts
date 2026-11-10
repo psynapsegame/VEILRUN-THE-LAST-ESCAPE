@@ -28,7 +28,8 @@ export type Kind = 'low' | 'high' | 'full';
 export const OBSTACLE: Record<Kind, { y0: number; y1: number; halfD: number; halfW: number }> = {
   low: { y0: 0, y1: 0.9, halfD: 0.35, halfW: 0.8 },
   high: { y0: 1.15, y1: 3.2, halfD: 0.35, halfW: 0.8 },
-  full: { y0: 0, y1: 3.2, halfD: 0.45, halfW: 0.8 },
+  // The guardian idol is about 1 m wide: the collision matches it, with a little margin in the runner's favour
+  full: { y0: 0, y1: 3.2, halfD: 0.45, halfW: 0.62 },
 };
 
 /** Base running speed for a travelled distance (monotonic, bounded). */

@@ -4,9 +4,9 @@ import { Banners } from './banners';
 import { Devourer } from './devourer';
 import frescoesUrl from '../assets/art/frescoes.webp';
 import panoramaUrl from '../assets/art/panorama.webp';
-import { Anchor, BRIDGE, GATE_BANNERS, NO_COLLAPSE, STATUES, columnGeometry, farBuildings, gateGeometry, sideProps } from './kit';
+import { Anchor, BRIDGE, GATE_BANNERS, NO_COLLAPSE, STATUES, StatuePlacement, columnGeometry, farBuildings, gateGeometry, sideProps } from './kit';
 import { loadTexture } from './loading';
-import { Statues, loadStatues } from './statues';
+import { Statue, Statues, loadStatues } from './statues';
 import { PAL } from './palette';
 import { SURFACES, Surface, installAtmosphere } from './materials';
 import type { Particles } from './particles';
@@ -42,6 +42,8 @@ export class Solaris {
   private banners = new Banners();
   private devourer: Devourer;
   private fallers: { mesh: THREE.Mesh; k: number; side: number; angle: number; vel: number; done: boolean }[] = [];
+  /** Resolves once every sculpted statue is loaded (the world swaps its obstacle model in then). */
+  readonly statuesReady: Promise<Statues>;
   /** Called when a toppling column hits the ground (camera shake, sound). */
   onImpact: ((x: number, z: number) => void) | null = null;
   private slots: { mesh: THREE.Mesh; k: number; side: number; statues: Map<number, THREE.Mesh> }[] = [];
@@ -215,13 +217,15 @@ export class Solaris {
       this.arches.push(m);
     }
     scene.add(this.group);
-    void loadStatues().then(st => this.attachStatues(st));
+    this.statuesReady = loadStatues();
+    void this.statuesReady.then(st => this.attachStatues(st));
   }
 
   /** Stand the sculpted statues on their plinths: one hidden mesh per slot and statue, shown with its piece. */
   private attachStatues(st: Statues): void {
+    const byId: Record<StatuePlacement['id'], Statue> = { colossus: st.colossus, sphinx: st.sphinx, head: st.head, brazier: st.brazier };
     for (const place of STATUES) {
-      const statue = place.id === 'colossus' ? st.colossus : st.sphinx;
+      const statue = byId[place.id];
       for (const slot of place.far ? this.farSlots : this.slots) {
         const m = new THREE.Mesh(statue.geometry, statue.material);
         m.position.set(place.x, place.y, place.z);
