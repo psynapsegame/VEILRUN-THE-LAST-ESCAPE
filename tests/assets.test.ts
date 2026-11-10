@@ -18,7 +18,7 @@ describe('budget des ressources 3D', () => {
     const h = await stats('src/assets/hero.glb');
     expect(h.tris).toBeLessThanOrEqual(20000);
     expect(h.maxTex).toBeLessThanOrEqual(1024);
-    for (const c of ['run', 'jump', 'fall']) expect(h.clips).toContain(c);
+    for (const c of ['run', 'jump', 'fall', 'slide', 'roll']) expect(h.clips).toContain(c);
     expect(h.size).toBeLessThan(2.5 * 1048576);
   });
   it.each(['colosse', 'sphinx', 'tete', 'brasero', 'idole', 'palmier', 'pylone', 'porte', 'pilier'])('la statue %s : ≤ 12 000 triangles, textures ≤ 1024 px, ≤ 1,5 Mo', async name => {

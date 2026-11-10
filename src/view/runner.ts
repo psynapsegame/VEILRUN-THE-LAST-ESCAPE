@@ -21,30 +21,24 @@ interface AnimCfg {
   fade: number;
   /** Play only this part of the source clip (seconds). */
   range?: [number, number];
-  /** Hold the body in the pose the source clip has at this instant (seconds). */
-  pose?: number;
 }
 const FPS = 30;
 const AIR_TIME = 0.62; // the game's jump lasts about this long
 /**
  * The Sentinel's animations come from a standard library. Its jump clip has a crouch, a leap and a recovery:
  * only the airborne part (0.49 s -> 1.11 s) is used, since the game's physics provides the take-off.
- * It has no slide, so the slide holds the instant of the fall clip where the hero sits back on the ground,
- * legs stretched forward: sliding feet-first on his back, head towards the camera.
+ * Slide: drops onto his back, legs stretched forward, and holds the pose until the slide ends (clamped).
+ * Dash: a forward roll, played fast enough to last as long as the dash.
  */
 const ANIMS: Record<Anim, AnimCfg> = {
   run: { src: 'run', loop: true, fade: 0.14 },
-  dash: { src: 'run', loop: true, fade: 0.06 },
+  dash: { src: 'roll', loop: false, fade: 0.06 },
   jump: { src: 'jump', loop: false, fade: 0.08, range: [0.49, 1.11] },
-  slide: { src: 'fall', loop: true, fade: 0.1, pose: 0.72 },
+  slide: { src: 'slide', loop: false, fade: 0.08, range: [0, 0.9] },
   dead: { src: 'fall', loop: false, fade: 0.08 },
 };
 
 function makeClip(src: THREE.AnimationClip, key: Anim, cfg: AnimCfg): THREE.AnimationClip {
-  if (cfg.pose !== undefined) {
-    const f = Math.round(cfg.pose * FPS);
-    return THREE.AnimationUtils.subclip(src, key, f, f + 2, FPS);
-  }
   if (cfg.range) return THREE.AnimationUtils.subclip(src, key, Math.round(cfg.range[0] * FPS), Math.round(cfg.range[1] * FPS), FPS);
   const c = src.clone(); // own copy: two states can share a source clip and still cross-fade
   c.name = key;
@@ -113,7 +107,8 @@ export class Runner {
       const fade = this.anim === '' ? 0 : this.anim === 'slide' ? Math.max(cfg.fade, 0.22) : cfg.fade; // getting up takes a moment
       let rate = 1;
       if (want === 'jump') rate = (cfg.range![1] - cfg.range![0]) / AIR_TIME;
-      else if (want === 'slide') rate = 0.001; // hold the pose
+      else if (want === 'slide') rate = 2; // the drop takes about 0.45 s, then the pose is held
+      else if (want === 'dash') rate = 2.3; // 1.27 s of roll in the 0.55 s of the dash
       else if (want === 'dead') rate = 1.7;
       next.reset().setEffectiveWeight(1).setEffectiveTimeScale(rate).fadeIn(fade).play();
       if (this.current && this.current !== next) this.current.fadeOut(fade);
@@ -122,12 +117,11 @@ export class Runner {
     }
     // Stride rate follows ground speed so the feet do not skate.
     if (want === 'run') this.current!.timeScale = 0.85 + (Math.max(f.speed, 11) - 11) / 14 * 0.7;
-    else if (want === 'dash') this.current!.timeScale = 1.6;
     this.mixer.update(dt);
 
     // Body attitude on top of the clips: lean into lane changes, tuck for slides, pitch in the air
     const k = 1 - Math.exp(-dt * 14);
-    const pitch = f.state === 'jump' ? (f.vy > 0 ? -0.12 : 0.08) : f.dashing ? -0.22 : 0;
+    const pitch = f.state === 'jump' ? (f.vy > 0 ? -0.12 : 0.08) : 0;
     this.pitch += (pitch - this.pitch) * k;
     this.pivot.rotation.set(this.pitch, -f.lean * 0.4, -f.lean * 0.28);
     const glow = f.dashing ? 0.28 : 0;
