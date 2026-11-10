@@ -109,3 +109,11 @@ La difficulté monte sans palier sur toute la course (`src/sim/config.ts`, `src/
 | 9–10 km | 0,9 s | 65 | 85 % | 33 m/s |
 
 À partir de 400 m apparaissent des rafales de 2 à 5 obstacles au rythme le plus serré, suivies d'un répit ; à partir de 500 m la voie sûre peut traverser deux voies d'un coup quand l'écart le permet ; un saut est le plus souvent suivi d'une glissade. Après 6 km les répits raccourcissent et les rafales s'allongent pendant 4 km de plus. Le temps de réaction minimal entre deux rangées (0,87 s) ne baisse jamais, et un validateur indépendant vérifie sur 300 parcours de 30 km qu'une route existe toujours ; un joueur automatique parfait survit 12 km.
+
+## Pièges : les trous
+
+Un trou de 2 m de large coupe la chaussée dans une voie (ou, rarement, dans les trois : un gouffre). On tombe si l'on est au sol au-dessus. Sa longueur est un quart de seconde de course, donc un saut (0,62 s en l'air) laisse toujours une fenêtre de 0,37 s pour décoller, à n'importe quelle vitesse ; on peut changer de voie en l'air au-dessus d'un trou. Ils apparaissent à partir de 120 m et deviennent plus fréquents. Rendu : la route et ses incrustations d'or sont percées par un shader, avec des bords de pierre autour. Collision et génération sont testées (`tests/sim.test.ts`).
+
+## Performances
+
+Les pièces sculptées (colosse, sphinx, tête, brasero, palmiers, pylônes) ont chacune une version de 400 à 900 triangles affichée au-delà de 45 à 90 m (`LOD_DIST` dans `src/view/solaris.ts`). Mesure sur une scène chargée à 520 m : 245 000 → 168 000 triangles (niveaux 0 à 2), 191 000 → 114 000 (niveaux 3 et 4). Les temps d'image ne peuvent pas être mesurés dans mon environnement, seul un téléphone réel le peut.

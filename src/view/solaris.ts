@@ -20,6 +20,8 @@ import type { Particles } from './particles';
 export const SUN_DIR = new THREE.Vector3(-0.18, 0.2, -1).normalize();
 /** Holes cut into the road at the same time (rows are visible about 125 m ahead). */
 const GAP_N = 20;
+/** Distance (m) beyond which each sculpted piece is drawn with its very light version. */
+const LOD_DIST = { colossus: 80, sphinx: 70, head: 50, brazier: 45, palm: 55, pylon: 90 } as const;
 const SLOT = 14; // metres between roadside props
 const SLOTS = 13;
 /** Which far buildings appear, weighted: the giant colossus is rarer than the rest. */
@@ -273,6 +275,7 @@ export class Solaris {
         m.position.set(side * PYLON_X, 0, 0);
         m.scale.setScalar(PYLON_SCALE);
         m.castShadow = true;
+        m.userData = { geo: st.pylon.geometry, lod: st.lod.pylon, dist: LOD_DIST.pylon, far: false };
         arch.add(m);
       }
     for (const place of STATUES) {
@@ -283,6 +286,7 @@ export class Solaris {
         m.rotation.y = place.ry;
         m.scale.setScalar(place.scale);
         m.castShadow = !place.far;
+        m.userData = { geo: statue.geometry, lod: st.lod[place.id], dist: place.far ? 45 : LOD_DIST[place.id], far: place.far };
         m.visible = false;
         slot.mesh.add(m);
         const list = slot.statues.get(place.index) ?? [];
@@ -292,6 +296,18 @@ export class Solaris {
         if (idx !== undefined) m.visible = idx === place.index;
       }
     }
+  }
+
+  /** Swap a sculpted piece between its full and its very light version according to its distance. */
+  private lodMesh(m: THREE.Mesh, z: number): void {
+    const u = m.userData;
+    if (!u.geo || (!m.visible && !u.far)) return;
+    const near = z > -u.dist;
+    m.geometry = near ? u.geo : u.lod;
+    m.castShadow = near && !u.far;
+  }
+  private applyLod(statues: Map<number, THREE.Mesh[]>, z: number): void {
+    for (const ms of statues.values()) for (const m of ms) if (m.visible) this.lodMesh(m, z);
   }
 
   /** Cut this frame's holes into the road and stand their stone edges around them. */
@@ -354,6 +370,7 @@ export class Solaris {
         s.mesh.position.x = s.side * (38 + h * 12);
       }
       s.mesh.position.z = dist - k * FAR - 9;
+      this.applyLod(s.statues, s.mesh.position.z);
     }
     const base = Math.floor(dist / SLOT) - 1;
     for (let n = 0; n < this.slots.length; n++) {
@@ -373,6 +390,7 @@ export class Solaris {
         s.mesh.userData.fire = this.propFire[pi];
       }
       s.mesh.position.z = dist - k * SLOT;
+      this.applyLod(s.statues, s.mesh.position.z);
       if (s.mesh.position.z > -150) for (const a of s.mesh.userData.banners as Anchor[]) this.banners.add(a, s.mesh.position.x, s.mesh.position.z, -s.side);
       // Braziers: flickering halo and rising embers
       const fire = this.fires[n];
@@ -389,6 +407,7 @@ export class Solaris {
     for (let i = 0; i < this.arches.length; i++) {
       const z = dist - (ab + i) * ARCH - SLOT / 2;
       this.arches[i].position.z = z;
+      for (const m of this.arches[i].children) this.lodMesh(m as THREE.Mesh, z);
       for (const a of GATE_BANNERS) this.banners.add(a, 0, z, 1);
     }
     this.banners.end();

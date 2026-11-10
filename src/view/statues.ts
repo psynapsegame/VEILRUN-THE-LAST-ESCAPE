@@ -12,6 +12,12 @@ import gateAsset from '../assets/statues/porte.glb';
 import gateLodAsset from '../assets/statues/porte_lod.glb';
 import pillarAsset from '../assets/statues/pilier.glb';
 import pillarLodAsset from '../assets/statues/pilier_lod.glb';
+import colossusLodAsset from '../assets/statues/colosse_lod.glb';
+import sphinxLodAsset from '../assets/statues/sphinx_lod.glb';
+import headLodAsset from '../assets/statues/tete_lod.glb';
+import brazierLodAsset from '../assets/statues/brasero_lod.glb';
+import palmLodAsset from '../assets/statues/palmier_lod.glb';
+import pylonLodAsset from '../assets/statues/pylone_lod.glb';
 import { loadGlb } from './glb';
 import { loading } from './loading';
 
@@ -37,6 +43,8 @@ export interface Statues {
   gateLod: Statue;
   pillar: Statue;
   pillarLod: Statue;
+  /** Very light versions (400-800 triangles) shown beyond a distance: only their geometry is used. */
+  lod: { colossus: THREE.BufferGeometry; sphinx: THREE.BufferGeometry; head: THREE.BufferGeometry; brazier: THREE.BufferGeometry; palm: THREE.BufferGeometry; pylon: THREE.BufferGeometry };
 }
 
 async function one(asset: string | Uint8Array): Promise<Statue> {
@@ -55,9 +63,13 @@ async function one(asset: string | Uint8Array): Promise<Statue> {
 }
 
 export function loadStatues(): Promise<Statues> {
+  const main = [colosseAsset, sphinxAsset, headAsset, brazierAsset, idolAsset, idolLodAsset, palmAsset, pylonAsset, crystalAsset, gateAsset, gateLodAsset, pillarAsset, pillarLodAsset];
+  const far = [colossusLodAsset, sphinxLodAsset, headLodAsset, brazierLodAsset, palmLodAsset, pylonLodAsset];
   return loading.track(
-    Promise.all([colosseAsset, sphinxAsset, headAsset, brazierAsset, idolAsset, idolLodAsset, palmAsset, pylonAsset, crystalAsset, gateAsset, gateLodAsset, pillarAsset, pillarLodAsset].map(one)).then(
-      ([colossus, sphinx, head, brazier, idol, idolLod, palm, pylon, crystal, gate, gateLod, pillar, pillarLod]) => ({ colossus, sphinx, head, brazier, idol, idolLod, palm, pylon, crystal, gate, gateLod, pillar, pillarLod }),
-    ),
+    Promise.all([Promise.all(main.map(one)), Promise.all(far.map(one))]).then(([m, f]) => ({
+      colossus: m[0], sphinx: m[1], head: m[2], brazier: m[3], idol: m[4], idolLod: m[5], palm: m[6], pylon: m[7], crystal: m[8],
+      gate: m[9], gateLod: m[10], pillar: m[11], pillarLod: m[12],
+      lod: { colossus: f[0].geometry, sphinx: f[1].geometry, head: f[2].geometry, brazier: f[3].geometry, palm: f[4].geometry, pylon: f[5].geometry },
+    })),
   );
 }

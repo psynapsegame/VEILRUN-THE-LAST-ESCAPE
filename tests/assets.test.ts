@@ -31,6 +31,9 @@ describe('budget des ressources 3D', () => {
     const s = await stats(`src/assets/statues/${name}.glb`);
     expect(s.tris).toBeLessThanOrEqual(2500);
   });
+  it.each(['colosse_lod', 'sphinx_lod', 'tete_lod', 'brasero_lod', 'palmier_lod', 'pylone_lod'])('la version lointaine %s : ≤ 1 000 triangles', async name => {
+    expect((await stats(`src/assets/statues/${name}.glb`)).tris).toBeLessThanOrEqual(1000);
+  });
   it('le cristal de fragment : ≤ 200 triangles (des dizaines à l’écran)', async () => {
     expect((await stats('src/assets/statues/cristal.glb')).tris).toBeLessThanOrEqual(200);
   });
