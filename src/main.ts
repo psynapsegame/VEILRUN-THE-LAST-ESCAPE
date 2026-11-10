@@ -2,7 +2,8 @@ import { GameAudio } from './audio/audio';
 import { GestureRecognizer } from './input/gestures';
 import { QualityGovernor } from './quality';
 import { loadSave, recordRun, writeSave, KV } from './save';
-import { CFG, SCHEDULE, WORLD_NAMES, portalNearest } from './sim/config';
+import { CFG, SCHEDULE, portalNearest } from './sim/config';
+import { WORLDS } from './sim/worlds';
 import { Game } from './sim/game';
 import { Action, Player } from './sim/player';
 import { Ui } from './ui/ui';
@@ -206,7 +207,7 @@ function frame(now: number): void {
   if (world.worldIdx !== shownWorld) {
     shownWorld = world.worldIdx;
     if (mode === 'run') {
-      ui.announce(WORLD_NAMES[shownWorld]);
+      ui.announce(WORLDS[shownWorld].name);
       audio.world = shownWorld;
     }
   }

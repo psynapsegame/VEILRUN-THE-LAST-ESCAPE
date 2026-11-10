@@ -1,3 +1,5 @@
+import { WORLDS } from './worlds';
+
 /** Gameplay tuning. Units: metres, seconds. The simulation never touches rendering. */
 export const CFG = {
   laneWidth: 2.2,
@@ -52,10 +54,9 @@ export function laserOn(row: { id: number }, time: number): boolean {
  * (`?portal=300` in the address bar moves the first portal closer, for testing.)
  */
 export const SCHEDULE = { first: 1500, every: 2000, clear: 32 };
-export const WORLD_NAMES = ['SOLARIS', 'NEXUS'] as const;
 /** Which world a given distance belongs to. */
 export function worldAt(z: number): number {
-  return z < SCHEDULE.first ? 0 : (Math.floor((z - SCHEDULE.first) / SCHEDULE.every) + 1) % 2;
+  return z < SCHEDULE.first ? 0 : (Math.floor((z - SCHEDULE.first) / SCHEDULE.every) + 1) % WORLDS.length;
 }
 /** Position of the portal nearest to `z`. */
 export function portalNearest(z: number): number {

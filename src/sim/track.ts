@@ -1,5 +1,6 @@
 import { CFG, Kind, SCHEDULE, difficultyAt, gapLength, portalNear, pressureAt, speedAt, worldAt } from './config';
 import { Rng } from './rng';
+import { HOLES_FROM, WORLDS, pickBlocker } from './worlds';
 
 export interface Row {
   id: number;
@@ -76,6 +77,7 @@ export class TrackGenerator {
       return;
     }
     const w = worldAt(z);
+    const world = WORLDS[w];
     const d = difficultyAt(z);
     const h = pressureAt(z);
     const prevSafe = this.safe;
@@ -95,20 +97,16 @@ export class TrackGenerator {
         if (r.next() < pAction) {
           // After a jump comes a slide (and the reverse) more often than not: no rhythm to settle into
           // 'low' and 'gap' are both jumps, 'high' is the slide
-          const jump = (): Kind => (z > 120 && r.next() < (w ? 0.55 : 0.4) ? 'gap' : 'low');
+          const jump = (): Kind => (z > HOLES_FROM && r.next() < world.holeOnSafe ? 'gap' : 'low');
           const lastJump = this.lastAction === 'low' || this.lastAction === 'gap';
           cells[l] = this.lastAction && r.next() < 0.65 ? (lastJump ? 'high' : jump()) : r.next() < 0.5 ? jump() : 'high';
         }
       } else if (r.next() < pBlock) {
-        const k = r.next();
-        // NEXUS swaps half of the walls for blinking lasers and opens more holes
-        cells[l] = w
-          ? (k < 0.25 ? 'full' : k < 0.55 ? 'laser' : k < 0.7 ? 'low' : k < 0.85 ? 'high' : 'gap')
-          : (k < 0.45 ? 'full' : k < 0.65 ? 'low' : k < 0.85 ? 'high' : z > 120 ? 'gap' : 'full');
+        cells[l] = pickBlocker(world, r.next(), z);
       }
     }
     // Now and then the whole causeway is open: a chasm to jump, in any lane
-    if (z > 600 && r.next() < (0.04 + 0.08 * d) * (w ? 1.6 : 1)) { cells[0] = cells[1] = cells[2] = 'gap'; }
+    if (z > 600 && r.next() < (0.04 + 0.08 * d) * world.chasm) { cells[0] = cells[1] = cells[2] = 'gap'; }
     this.lastAction = cells[this.safe] as Kind | null;
     this.rows.push({ id: this.nextId++, z, cells, gapLen: gapLength(speedAt(z)), world: w, smashed: [false, false, false], safe: this.safe });
 

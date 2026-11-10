@@ -35,7 +35,7 @@ src/sim/      Simulation pure, sans rendu, déterministe (pas fixe 120 Hz)
   bot.ts        joueur de référence pour prouver que les parcours sont jouables
 src/input/    Reconnaissance des gestes (swipes, double-tap), testable hors navigateur
 src/view/     Rendu Three.js : personnage articulé, SOLARIS, particules, caméra, pools
-src/audio/    Musique générative et effets, 100 % procéduraux (aucun sample)
+src/audio/    Enregistrements ElevenLabs (boucles de musique, effets) + synthèse de secours
 src/ui/       Menu, HUD, pause, résultat (DOM/CSS)
 src/save.ts   Sauvegarde locale versionnée, interface de stockage remplaçable (cloud plus tard)
 android/      Projet Android Studio (Capacitor)
