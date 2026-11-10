@@ -128,7 +128,7 @@ export class Runner {
     this.drop += ((f.state === 'slide' ? -0.12 : 0) - this.drop) * k;
     this.pivot.position.y = this.drop;
     this.pivot.rotation.set(this.pitch, -f.lean * 0.4, -f.lean * 0.28);
-    const glow = f.dashing ? 0.28 : 0;
+    const glow = f.dashing ? 0.05 : 0; // a hint only: stronger washes the whole body in flat cyan
     for (const m of this.mats) m.emissiveIntensity += (glow - m.emissiveIntensity) * k;
   }
 }

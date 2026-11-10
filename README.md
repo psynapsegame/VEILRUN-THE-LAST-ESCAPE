@@ -47,7 +47,7 @@ Principes : la simulation ignore le rendu (donc testable et rejouable par graine
 ## État réel — Phase 1
 
 Fait et vérifié :
-- Course automatique, 3 voies, saut, glissade, plongeon, dash, vitesse progressive (11 → 25 m/s).
+- Course automatique, 3 voies, saut, glissade, plongeon, dash, vitesse progressive (11 → 34 m/s).
 - 3 familles d'obstacles (à sauter, à passer dessous, à contourner), fragments, score, record.
 - Générateur : toujours une voie praticable, fenêtre de réaction ≥ 0,85 s à toute vitesse. Vérifié sur 200 graines × 20 km, et par un joueur automatique qui survit 6 km sur 25 graines.
 - Gestes tactiles vérifiés en émulation iPhone 13 (swipes, double-tap, boutons, pause, reprise, sauvegarde après rechargement).
@@ -95,3 +95,17 @@ L'architecture est construite par code (kit dessiné comme de l'architecture) ; 
 ## Obstacles sculptés et collisions
 
 Les volumes de collision suivent les modèles : colonne tombée 0,62 m de haut sur 1,7 m de large (à sauter), porte solaire dont la poutre commence à 1,4 m (à passer en glissant, le coureur glisse à 0,7 m et se tient à 1,7 m), idole 1,24 m de large (à contourner). Au-delà de 62 m, les obstacles utilisent des versions très légères.
+
+## Courbe de difficulté
+
+La difficulté monte sans palier sur toute la course (`src/sim/config.ts`, `src/sim/track.ts`, testée dans `tests/difficulty.test.ts`) :
+
+| Distance | Écart entre obstacles | Obstacles par minute | Voie sûre qui exige une action | Vitesse |
+|---|---|---|---|---|
+| 0–500 m | 1,7 s | 36 | 24 % | 11 → 15 m/s |
+| 1,5–2,5 km | 1,4 s | 43 | 41 % | 20 → 25 m/s |
+| 3,5–4,5 km | 1,2 s | 51 | 61 % | 28 → 30 m/s |
+| 6–7 km | 1,0 s | 61 | 84 % | 31 → 32 m/s |
+| 9–10 km | 0,9 s | 65 | 85 % | 33 m/s |
+
+À partir de 400 m apparaissent des rafales de 2 à 5 obstacles au rythme le plus serré, suivies d'un répit ; à partir de 500 m la voie sûre peut traverser deux voies d'un coup quand l'écart le permet ; un saut est le plus souvent suivi d'une glissade. Après 6 km les répits raccourcissent et les rafales s'allongent pendant 4 km de plus. Le temps de réaction minimal entre deux rangées (0,87 s) ne baisse jamais, et un validateur indépendant vérifie sur 300 parcours de 30 km qu'une route existe toujours ; un joueur automatique parfait survit 12 km.

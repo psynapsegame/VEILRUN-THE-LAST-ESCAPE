@@ -1,10 +1,10 @@
-import { CFG } from '../sim/config';
+import { CFG, speedAt } from '../sim/config';
 import type { Game } from '../sim/game';
 import type { SaveData } from '../save';
 import titleUrl from '../assets/art/title.webp';
 import { CSS } from './style';
 
-export const VERSION = '0.11.0';
+export const VERSION = '0.12.0';
 const fmt = (n: number) => Math.floor(n).toLocaleString('fr-FR');
 
 export interface UiHandlers {
@@ -23,7 +23,7 @@ export class Ui {
   readonly canvas: HTMLCanvasElement;
   private layers: Record<'menu' | 'hud' | 'pause' | 'over', HTMLElement>;
   private el: Record<string, HTMLElement> = {};
-  private last = { d: -1, s: -1, f: -1, ready: false, tip: '' };
+  private last = { d: -1, s: -1, f: -1, ready: false, tip: '', mile: 0, until: 0, msg: '' };
   private ring!: SVGCircleElement;
 
   constructor(h: UiHandlers, muted: boolean) {
@@ -121,7 +121,15 @@ export class Ui {
     this.ring.style.strokeDashoffset = String(ready ? 0 : (R * g.dashCooldown) / CFG.dashCooldown);
     if (ready !== l.ready) this.el.dash.classList.toggle('ready', (l.ready = ready));
     // First seconds of a run: one instruction at a time
-    const tip = g.time < 2.2 ? '← GLISSE →' : g.time < 4.4 ? '↑ SAUTER   ·   ↓ GLISSER' : g.time < 6.6 ? 'DOUBLE-TAP : DASH' : '';
+    // Every 500 m a reminder that it keeps getting faster
+    if (g.time < 0.3) { l.mile = 0; l.until = 0; }
+    const mile = Math.floor(g.dist / 500);
+    if (mile > l.mile) {
+      l.mile = mile;
+      l.until = g.time + 2.6;
+      l.msg = `${fmt(mile * 500)} M  ·  ${Math.round(speedAt(g.dist) * 3.6)} KM/H`;
+    }
+    const tip = g.time < 2.2 ? '← GLISSE →' : g.time < 4.4 ? '↑ SAUTER   ·   ↓ GLISSER' : g.time < 6.6 ? 'DOUBLE-TAP : DASH' : g.time < l.until ? l.msg : '';
     if (tip !== l.tip) {
       this.el.tip.textContent = l.tip = tip;
     }

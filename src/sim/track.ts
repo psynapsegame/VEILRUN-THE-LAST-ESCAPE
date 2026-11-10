@@ -1,4 +1,4 @@
-import { CFG, Kind, difficultyAt, speedAt } from './config';
+import { CFG, Kind, difficultyAt, pressureAt, speedAt } from './config';
 import { Rng } from './rng';
 
 export interface Row {
@@ -21,8 +21,14 @@ export interface Coin {
 
 /**
  * Procedural course generator. It walks a "safe lane" forward: every row keeps
- * that lane passable, the safe lane moves at most one lane per row, and rows are
- * spaced by time (not distance) so the reaction window never shrinks with speed.
+ * that lane passable, and rows are spaced by time (not distance) so the reaction
+ * window never shrinks with speed. Difficulty climbs with the distance run and never plateaus:
+ *   - the time between rows shrinks from 1.6-1.9 s to the minimum (0.87 s) over 6 km
+ *   - side lanes are blocked more often, the safe lane demands a jump or a slide more often
+ *   - from 400 m, "bursts" of 2-5 rows at the tightest spacing, followed by a breather
+ *   - the safe lane may jump two lanes at once when the gap allows two lane changes
+ *   - after a jump comes a slide (and the reverse) more often than not
+ *   - past 6 km, bursts get longer and more frequent for another 4 km
  */
 export class TrackGenerator {
   readonly rows: Row[] = [];
@@ -31,6 +37,11 @@ export class TrackGenerator {
   private nextZ = 45; // first obstacle distance: gives the player time to settle
   private safe = 1;
   private nextId = 1;
+  /** Time (s) between the previous row and the next one, as scheduled when the previous row was made. */
+  private gapBefore = 3;
+  private burstLeft = 0;
+  private breather = false;
+  private lastAction: Kind | null = null;
 
   constructor(seed: number) {
     this.rng = new Rng(seed);
@@ -50,22 +61,32 @@ export class TrackGenerator {
     const r = this.rng;
     const z = this.nextZ;
     const d = difficultyAt(z);
+    const h = pressureAt(z);
     const prevSafe = this.safe;
+
+    // Where the safe lane goes: stay, one lane over, or (when two lane changes fit in the gap) across the road
     const roll = r.next();
-    if (roll < 0.3) this.safe = Math.max(0, this.safe - 1);
+    const canCross = this.gapBefore >= 1.08 && z > 500 && (prevSafe === 0 || prevSafe === 2);
+    if (canCross && r.next() < 0.1 + 0.3 * d) this.safe = 2 - prevSafe;
+    else if (roll < 0.3) this.safe = Math.max(0, this.safe - 1);
     else if (roll < 0.6) this.safe = Math.min(2, this.safe + 1);
 
     const cells: (Kind | null)[] = [null, null, null];
-    const pAction = 0.25 + 0.4 * d; // chance the safe lane still demands a jump/slide
-    const pBlock = 0.4 + 0.4 * d; // chance a side lane is obstructed
+    const pAction = 0.2 + 0.65 * d; // chance the safe lane still demands a jump/slide
+    const pBlock = 0.35 + 0.5 * d; // chance a side lane is obstructed
     for (let l = 0; l < 3; l++) {
       if (l === this.safe) {
-        if (r.next() < pAction) cells[l] = r.next() < 0.5 ? 'low' : 'high';
+        if (r.next() < pAction) {
+          // After a jump comes a slide (and the reverse) more often than not: no rhythm to settle into
+          const other: Kind = this.lastAction === 'low' ? 'high' : 'low';
+          cells[l] = this.lastAction && r.next() < 0.65 ? other : r.next() < 0.5 ? 'low' : 'high';
+        }
       } else if (r.next() < pBlock) {
         const k = r.next();
         cells[l] = k < 0.5 ? 'full' : k < 0.75 ? 'low' : 'high';
       }
     }
+    this.lastAction = cells[this.safe] as Kind | null;
     this.rows.push({ id: this.nextId++, z, cells, smashed: [false, false, false], safe: this.safe });
 
     // Fragments lead the eye towards the safe lane, then follow the required move.
@@ -76,8 +97,23 @@ export class TrackGenerator {
     }
     this.coins.push({ z, lane: this.safe, y: safeCell === 'low' ? 2.1 : safeCell === 'high' ? 0.45 : 1, taken: false });
 
-    const gapTime = 1.5 - 0.6 * d + r.next() * 0.3; // 1.5..1.8 s early, 0.9..1.2 s late
-    this.nextZ = z + speedAt(z) * Math.max(CFG.minRowTime, gapTime);
+    // Spacing in seconds: a steady squeeze, with bursts at the tightest spacing and breathers after them
+    const tight = CFG.minRowTime * 1.02; // a hair above the minimum: speed grows a little between two rows
+    let gap: number;
+    if (this.burstLeft > 0) {
+      gap = tight + r.next() * 0.1 * (1 - d) + (1 - d) * 0.25;
+      this.burstLeft--;
+      this.breather = this.burstLeft === 0;
+    } else if (this.breather) {
+      gap = 1.9 - 0.5 * d + r.next() * 0.3 - 0.5 * h; // breathers shrink too once the ramp is over
+      this.breather = false;
+    } else {
+      gap = 1.6 - 0.73 * d + r.next() * (0.3 - 0.2 * d);
+      if (z > 400 && r.next() < 0.1 + 0.3 * d + 0.35 * h) this.burstLeft = 2 + (r.next() < 0.3 + 0.4 * d ? 1 : 0) + (r.next() < 0.5 * h + 0.2 * d ? 1 : 0) + (h > 0.5 && r.next() < 0.4 ? 1 : 0);
+    }
+    gap = Math.max(tight, gap);
+    this.gapBefore = gap;
+    this.nextZ = z + speedAt(z) * gap;
   }
 }
 

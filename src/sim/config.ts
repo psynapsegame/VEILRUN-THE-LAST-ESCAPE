@@ -11,8 +11,8 @@ export const CFG = {
   halfW: 0.35,
   halfD: 0.3,
   speedStart: 11,
-  speedMax: 25,
-  speedScale: 1400, // distance constant of the speed curve
+  speedMax: 34, // asymptote: about 122 km/h
+  speedScale: 2600, // distance constant of the speed curve (25 m/s at 2.5 km, 31 m/s at 5 km)
   dashTime: 0.55,
   dashMult: 1.7,
   dashCooldown: 8,
@@ -39,7 +39,13 @@ export function speedAt(dist: number): number {
   return CFG.speedStart + (CFG.speedMax - CFG.speedStart) * (1 - Math.exp(-dist / CFG.speedScale));
 }
 
-/** 0..1 difficulty for a travelled distance. */
+/** Distance over which the difficulty climbs from 0 to 1. */
+export const RAMP = 6000;
+/** 0..1 difficulty for a travelled distance: a steady climb over the first 6 km. */
 export function difficultyAt(dist: number): number {
-  return Math.min(1, Math.max(0, dist / 2500));
+  return Math.min(1, Math.max(0, dist / RAMP));
+}
+/** 0..1 extra pressure after the ramp is over: it keeps rising for 4 more km, so the run never plateaus. */
+export function pressureAt(dist: number): number {
+  return Math.min(1, Math.max(0, (dist - RAMP) / 4000));
 }
