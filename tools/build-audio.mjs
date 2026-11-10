@@ -42,6 +42,13 @@ const SFX = {
   devourer: { start: 0, dur: 3.0, fade: 0.7, peak: -3 },
   defeat: { start: 0, dur: 4.6, fade: 1.2, peak: -3 },
   results: { start: 0, dur: 10, fade: 1.6, peak: -4 },
+  smash: { start: 0, dur: 2.2, fade: 0.8, peak: -3 },
+  death: { start: 0, dur: 1.6, fade: 0.6, peak: -3 },
+  fall: { start: 0.2, dur: 2.4, fade: 0.8, peak: -4 },
+  collapse: { start: 0, dur: 5.0, fade: 1.5, peak: -4 },
+  milestone: { start: 1.4, dur: 3.2, fade: 0.8, peak: -5 },
+  ready: { start: 0, dur: 0.9, fade: 0.25, peak: -6 },
+  footsteps: { auto: 0.28, fade: 0.1, peak: -10 }, // one footfall; main.ts repeats it at the running cadence
   portal: { aroundPeak: [1.8, 3.8], fade: 0.8, peak: -3 }, // starts 1.8 s before the loudest moment
 };
 for (const [name, c] of Object.entries(SFX)) {

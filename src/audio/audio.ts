@@ -70,7 +70,7 @@ export class GameAudio {
   /** Decodes the recordings (menu theme first). A failure only means that sound stays procedural. */
   private async load(): Promise<void> {
     const c = this.ctx!;
-    const order = ['menu', 'ui', 'jump', 'land', 'lane', 'slide', 'crystal', 'dash', 'defeat', 'results', 'portal', 'devourer', 'ambience_solaris', 'run_1', 'run_2', 'run_3'];
+    const order = ['menu', 'ui', 'jump', 'land', 'lane', 'slide', 'crystal', 'dash', 'defeat', 'death', 'smash', 'fall', 'collapse', 'ready', 'milestone', 'footsteps', 'results', 'portal', 'devourer', 'ambience_solaris', 'run_1', 'run_2', 'run_3'];
     for (const n of order) {
       try {
         const a = FILES[n];
@@ -225,7 +225,7 @@ export class GameAudio {
     }
   }
 
-  sfx(name: 'jump' | 'land' | 'slide' | 'lane' | 'coin' | 'dash' | 'smash' | 'death' | 'ready' | 'ui' | 'rumble' | 'portal'): void {
+  sfx(name: 'jump' | 'land' | 'slide' | 'lane' | 'coin' | 'dash' | 'smash' | 'death' | 'ready' | 'ui' | 'rumble' | 'portal' | 'fall' | 'milestone' | 'footstep'): void {
     const c = this.ctx;
     if (!c || c.state !== 'running') return;
     const t = c.currentTime;
@@ -237,7 +237,13 @@ export class GameAudio {
       case 'dash': if (this.play('dash', 1)) return; break;
       case 'ui': if (this.play('ui', 0.8)) return; break;
       case 'portal': if (this.play('portal', 1)) return; break;
-      case 'death': if (this.play('defeat', 1)) { this.hiss(t, 0.5, 0.35, 700, 0.5, 80); return; } break;
+      case 'death': if (this.play('death', 1)) { this.play('defeat', 0.9); return; } if (this.play('defeat', 1)) return; break;
+      case 'fall': if (this.play('fall', 1)) { this.play('defeat', 0.9); return; } break;
+      case 'smash': if (this.play('smash', 1, 1, 0.05)) return; break;
+      case 'rumble': if (this.play('collapse', 0.9)) return; break;
+      case 'ready': if (this.play('ready', 0.8)) return; break;
+      case 'milestone': if (this.play('milestone', 0.8)) return; return;
+      case 'footstep': if (this.play('footsteps', 0.7, 1, 0.12)) return; return;
       case 'coin': {
         // pickups climb a major scale, like the old synthesis, by re-pitching the recording
         this.coinStreak = t - this.lastCoin < 0.5 ? Math.min(this.coinStreak + 1, 9) : 0;

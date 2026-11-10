@@ -15,7 +15,14 @@ import run_2 from '../assets/audio/run_2.m4a';
 import run_3 from '../assets/audio/run_3.m4a';
 import slide from '../assets/audio/slide.m4a';
 import ui from '../assets/audio/ui.m4a';
+import smash from '../assets/audio/smash.m4a';
+import death from '../assets/audio/death.m4a';
+import fall from '../assets/audio/fall.m4a';
+import collapse from '../assets/audio/collapse.m4a';
+import milestone from '../assets/audio/milestone.m4a';
+import ready from '../assets/audio/ready.m4a';
+import footsteps from '../assets/audio/footsteps.m4a';
 
 export const FILES: Record<string, string | Uint8Array> = {
-  ambience_solaris, crystal, dash, defeat, devourer, jump, land, lane, menu, portal, results, run_1, run_2, run_3, slide, ui,
+  ambience_solaris, smash, death, fall, collapse, milestone, ready, footsteps, crystal, dash, defeat, devourer, jump, land, lane, menu, portal, results, run_1, run_2, run_3, slide, ui,
 };

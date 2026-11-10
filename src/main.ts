@@ -29,6 +29,7 @@ let splashDone = /[?&]nosplash/.test(location.search); // ?nosplash: skip the lo
 const portalParam = /[?&]portal=(\d+)/.exec(location.search);
 if (portalParam) SCHEDULE.first = +portalParam[1];
 let shownWorld = 0;
+let stepT = 0, mileHeard = 0;
 let portalHeard = -1; // the portal whose sound has already played
 const idle: ViewState = { time: 0, dist: 0, speed: 9, player: new Player(), dashing: false, track: { rows: [], coins: [] } };
 
@@ -52,6 +53,7 @@ if (splashDone) ui.hideSplash();
 function start(): void {
   shownWorld = 0;
   portalHeard = -1;
+  stepT = 0; mileHeard = 0;
   audio.world = 0;
   audio.menuMusic = false;
   game = new Game((Math.random() * 2 ** 31) | 0);
@@ -160,7 +162,9 @@ function frame(now: number): void {
       while (acc >= STEP) { game.step(STEP); acc -= STEP; }
       for (const ev of game.events) {
         world.handle(ev, game);
-        if (ev.t === 'dashReady') audio.sfx('ready'); else audio.sfx(ev.t);
+        if (ev.t === 'dashReady') audio.sfx('ready');
+        else if (ev.t === 'death' && game.fell) audio.sfx('fall');
+        else audio.sfx(ev.t);
         if (ev.t === 'death') {
           mode = 'dying';
           dyingT = 0;
@@ -171,6 +175,11 @@ function frame(now: number): void {
       game.events.length = 0;
       ui.hud(game);
       audio.intensity = (game.speed - CFG.speedStart) / (CFG.speedMax - CFG.speedStart);
+      // Footfalls at the running cadence, one 500 m chime per milestone
+      stepT -= dt;
+      if (stepT <= 0 && game.player.grounded) { audio.sfx('footstep'); stepT = 0.36 - 0.14 * Math.min(1, audio.intensity); }
+      const mile = Math.floor(game.dist / 500);
+      if (mile > mileHeard) { mileHeard = mile; audio.sfx('milestone'); }
       // The portal sound starts ~1.8 s before the ring, so its peak lands as the runner crosses it
       const p = portalNearest(game.dist);
       if (p > game.dist && p !== portalHeard && p - game.dist < game.speed * 1.8) { portalHeard = p; audio.sfx('portal'); }
