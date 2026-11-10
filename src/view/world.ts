@@ -49,9 +49,12 @@ export class World {
   private shadow: THREE.Mesh;
   private parts = new Particles();
   private pools = new Map<Kind, THREE.Mesh[]>();
-  /** Every pooled mesh of the 'full' obstacle, so the sculpted idol can replace the provisional model. */
-  private fullMeshes: THREE.Mesh[] = [];
-  private idol: { geo: THREE.BufferGeometry; lod: THREE.BufferGeometry } | null = null;
+  /** Every pooled mesh of each obstacle kind, so the sculpted models can replace the provisional ones. */
+  private allMeshes: Record<Kind, THREE.Mesh[]> = { low: [], high: [], full: [] };
+  /** Full-detail and far geometry per obstacle kind, once the sculpted models are loaded. */
+  private lods: Record<Kind, { geo: THREE.BufferGeometry; lod: THREE.BufferGeometry }> | null = null;
+  /** True once the sculpted obstacle models are in place (tests wait for it). */
+  idol = false;
   private live = new Map<number, (THREE.Mesh | null)[]>();
   private coins: THREE.InstancedMesh;
   private m4 = new THREE.Matrix4();
@@ -150,17 +153,15 @@ export class World {
         m.visible = false;
         m.castShadow = true;
         if (k === 'high') m.add(halo(PAL.cyan, 0, 2.4, 0.1, 1.9));
-        if (k === 'full') {
-          m.add(halo(PAL.cyan, 0, 2.86, 0.42, 0.8));
-          this.fullMeshes.push(m);
-        }
+        if (k === 'full') m.add(halo(PAL.cyan, 0, 2.86, 0.42, 0.8));
+        this.allMeshes[k].push(m);
         this.scene.add(m);
         pool.push(m);
       }
       this.pools.set(k, pool);
     }
 
-    void this.env.statuesReady.then(st => this.useIdol(st, halo));
+    void this.env.statuesReady.then(st => this.useObstacles(st, halo));
 
     this.coins = new THREE.InstancedMesh(
       new THREE.OctahedronGeometry(0.3),
@@ -193,19 +194,42 @@ export class World {
   }
 
   /**
-   * The guardian idol replaces the provisional 'full' obstacle. It stands 2.7 m tall on its stepped pedestal,
-   * inside the 1.6 x 0.9 m collision volume, and faces the runner. Far rows use a very light version.
+   * The sculpted obstacles replace the provisional ones, each inside its collision volume (see sim/config):
+   *  - 'full' guardian idol: 2.7 m tall, 1 m wide
+   *  - 'low' fallen pillar: 1.9 m wide, 0.63 m high (jump over it)
+   *  - 'high' sun gate: 2 m wide, beam from 1.43 m to 2.0 m (slide under it)
+   * Rows beyond 62 m use very light versions. The turquoise glows mark what is dangerous.
+   * The fragment crystals replace the provisional octahedra.
    */
-  private useIdol(st: Statues, halo: (color: number, x: number, y: number, z: number, size: number) => THREE.Sprite): void {
-    const S = 1.4;
-    this.idol = { geo: st.idol.geometry, lod: st.idolLod.geometry };
-    for (const m of this.fullMeshes) {
-      m.geometry = st.idol.geometry;
-      m.material = st.idol.material;
-      m.scale.setScalar(S);
-      for (const c of [...m.children]) m.remove(c);
-      m.add(halo(PAL.cyan, 0, 1.8, 0.18, 0.6)); // the turquoise gem on the forehead (model units: scaled with the mesh)
+  private useObstacles(st: Statues, halo: (color: number, x: number, y: number, z: number, size: number) => THREE.Sprite): void {
+    const kinds: [Kind, Statues['idol'], Statues['idol'], [number, number, number], [number, number, number, number] | null][] = [
+      ['full', st.idol, st.idolLod, [1.4, 1.4, 1.4], [0, 2.5, 0.26, 0.85]],
+      ['low', st.pillar, st.pillarLod, [2, 2.6, 2.1], null],
+      ['high', st.gate, st.gateLod, [2.09, 3.1, 2.2], [0, 1.71, 0.46, 0.95]],
+    ];
+    this.lods = { low: null!, high: null!, full: null! };
+    for (const [k, main, lod, sc, glow] of kinds) {
+      this.lods[k] = { geo: main.geometry, lod: lod.geometry };
+      for (const m of this.allMeshes[k]) {
+        m.geometry = main.geometry;
+        m.material = main.material;
+        m.scale.set(...sc);
+        for (const c of [...m.children]) m.remove(c);
+        if (glow) {
+          const h = halo(PAL.cyan, glow[0], glow[1] / sc[1], glow[2] / sc[2], glow[3]);
+          h.scale.setScalar(glow[3] / sc[1]); // sprites inherit the mesh scale
+          m.add(h);
+        }
+      }
     }
+    const crystal = st.crystal.geometry.clone();
+    crystal.center();
+    crystal.scale(0.84, 0.84, 0.84); // about 0.8 m tall
+    this.coins.geometry.dispose();
+    this.coins.geometry = crystal;
+    (this.coins.material as THREE.Material).dispose();
+    this.coins.material = new THREE.MeshStandardMaterial({ color: 0xffb02e, emissive: 0xff7a10, emissiveIntensity: 0.85, metalness: 0.35, roughness: 0.28, flatShading: true, fog: false });
+    this.idol = true;
   }
 
   /**
@@ -319,7 +343,7 @@ export class World {
       for (const m of ms) {
         if (!m) continue;
         m.position.z = z;
-        if (this.idol && m.userData.kind === 'full') m.geometry = z < -62 ? this.idol.lod : this.idol.geo;
+        if (this.lods) m.geometry = z < -62 ? this.lods[m.userData.kind as Kind].lod : this.lods[m.userData.kind as Kind].geo;
       }
     }
     for (const [id, ms] of this.live) {

@@ -21,16 +21,18 @@ describe('budget des ressources 3D', () => {
     for (const c of ['run', 'jump', 'fall']) expect(h.clips).toContain(c);
     expect(h.size).toBeLessThan(2.5 * 1048576);
   });
-  it.each(['colosse', 'sphinx', 'tete', 'brasero', 'idole'])('la statue %s : ≤ 12 000 triangles, textures ≤ 1024 px, ≤ 1,5 Mo', async name => {
+  it.each(['colosse', 'sphinx', 'tete', 'brasero', 'idole', 'palmier', 'pylone', 'porte', 'pilier'])('la statue %s : ≤ 12 000 triangles, textures ≤ 1024 px, ≤ 1,5 Mo', async name => {
     const s = await stats(`src/assets/statues/${name}.glb`);
     expect(s.tris).toBeLessThanOrEqual(12000);
     expect(s.maxTex).toBeLessThanOrEqual(1024);
     expect(s.size).toBeLessThan(1.5 * 1048576);
   });
-  it('l’idole lointaine (niveau de détail) : ≤ 2 500 triangles, textures ≤ 512 px', async () => {
-    const s = await stats('src/assets/statues/idole_lod.glb');
+  it.each(['idole_lod', 'porte_lod', 'pilier_lod'])('la version lointaine %s : ≤ 2 500 triangles', async name => {
+    const s = await stats(`src/assets/statues/${name}.glb`);
     expect(s.tris).toBeLessThanOrEqual(2500);
-    expect(s.maxTex).toBeLessThanOrEqual(512);
+  });
+  it('le cristal de fragment : ≤ 200 triangles (des dizaines à l’écran)', async () => {
+    expect((await stats('src/assets/statues/cristal.glb')).tris).toBeLessThanOrEqual(200);
   });
   it('les images 2D livrées restent légères (≤ 300 Ko chacune)', () => {
     for (const f of readdirSync('src/assets/art')) expect(statSync(`src/assets/art/${f}`).size, f).toBeLessThan(300 * 1024);

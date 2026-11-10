@@ -26,8 +26,10 @@ export type Kind = 'low' | 'high' | 'full';
 
 /** Collision volumes per obstacle kind (y range, half depth, half width). */
 export const OBSTACLE: Record<Kind, { y0: number; y1: number; halfD: number; halfW: number }> = {
-  low: { y0: 0, y1: 0.9, halfD: 0.35, halfW: 0.8 },
-  high: { y0: 1.15, y1: 3.2, halfD: 0.35, halfW: 0.8 },
+  // Fallen pillar: about 0.63 m high and 1.9 m wide in the model
+  low: { y0: 0, y1: 0.62, halfD: 0.35, halfW: 0.85 },
+  // Sun gate: its beam starts 1.43 m above the road (the runner slides at 0.7 m and stands at 1.7 m)
+  high: { y0: 1.4, y1: 3.2, halfD: 0.35, halfW: 0.8 },
   // The guardian idol is about 1 m wide: the collision matches it, with a little margin in the runner's favour
   full: { y0: 0, y1: 3.2, halfD: 0.45, halfW: 0.62 },
 };

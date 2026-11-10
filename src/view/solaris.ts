@@ -5,7 +5,7 @@ import { hash, isCollapse } from './events';
 import { Devourer } from './devourer';
 import frescoesUrl from '../assets/art/frescoes.webp';
 import panoramaUrl from '../assets/art/panorama.webp';
-import { Anchor, BRIDGE, GATE_BANNERS, NO_COLLAPSE, STATUES, StatuePlacement, columnGeometry, farBuildings, gateGeometry, sideProps } from './kit';
+import { Anchor, BRIDGE, GATE_BANNERS, NO_COLLAPSE, PYLON_SCALE, PYLON_X, STATUES, StatuePlacement, columnGeometry, farBuildings, gateGeometry, sideProps } from './kit';
 import { loadTexture } from './loading';
 import { Statue, Statues, loadStatues } from './statues';
 import { PAL } from './palette';
@@ -40,7 +40,7 @@ export class Solaris {
   readonly statuesReady: Promise<Statues>;
   /** Called when a toppling column hits the ground (camera shake, sound). */
   onImpact: ((x: number, z: number) => void) | null = null;
-  private slots: { mesh: THREE.Mesh; k: number; side: number; statues: Map<number, THREE.Mesh> }[] = [];
+  private slots: { mesh: THREE.Mesh; k: number; side: number; statues: Map<number, THREE.Mesh[]> }[] = [];
   private arches: THREE.Mesh[] = [];
   /** Shared materials, indexed by Builder slot: masonry, gold, glowing, plain, painted panels. */
   readonly mats: THREE.Material[];
@@ -53,7 +53,7 @@ export class Solaris {
   readonly glow = glowTexture();
   private sky: THREE.ShaderMaterial;
   private far: THREE.BufferGeometry[];
-  private farSlots: { mesh: THREE.Mesh; k: number; side: number; statues: Map<number, THREE.Mesh> }[] = [];
+  private farSlots: { mesh: THREE.Mesh; k: number; side: number; statues: Map<number, THREE.Mesh[]> }[] = [];
   private fires: THREE.Sprite[] = [];
 
   constructor(scene: THREE.Scene) {
@@ -217,7 +217,16 @@ export class Solaris {
 
   /** Stand the sculpted statues on their plinths: one hidden mesh per slot and statue, shown with its piece. */
   private attachStatues(st: Statues): void {
-    const byId: Record<StatuePlacement['id'], Statue> = { colossus: st.colossus, sphinx: st.sphinx, head: st.head, brazier: st.brazier };
+    const byId: Record<StatuePlacement['id'], Statue> = { colossus: st.colossus, sphinx: st.sphinx, head: st.head, brazier: st.brazier, palm: st.palm };
+    // The sculpted pylons stand on the gateway foundations
+    for (const arch of this.arches)
+      for (const side of [-1, 1]) {
+        const m = new THREE.Mesh(st.pylon.geometry, st.pylon.material);
+        m.position.set(side * PYLON_X, 0, 0);
+        m.scale.setScalar(PYLON_SCALE);
+        m.castShadow = true;
+        arch.add(m);
+      }
     for (const place of STATUES) {
       const statue = byId[place.id];
       for (const slot of place.far ? this.farSlots : this.slots) {
@@ -228,7 +237,9 @@ export class Solaris {
         m.castShadow = !place.far;
         m.visible = false;
         slot.mesh.add(m);
-        slot.statues.set(place.index, m);
+        const list = slot.statues.get(place.index) ?? [];
+        list.push(m);
+        slot.statues.set(place.index, list);
         const idx = slot.mesh.userData.index;
         if (idx !== undefined) m.visible = idx === place.index;
       }
@@ -267,7 +278,7 @@ export class Solaris {
         const fi = FAR_PICK[Math.floor(h * FAR_PICK.length)];
         s.mesh.geometry = this.far[fi];
         s.mesh.userData.index = fi;
-        for (const [idx, m] of s.statues) m.visible = idx === fi;
+        for (const [idx, ms] of s.statues) for (const m of ms) m.visible = idx === fi;
         s.mesh.position.x = s.side * (38 + h * 12);
       }
       s.mesh.position.z = dist - k * FAR - 9;
@@ -283,7 +294,7 @@ export class Solaris {
         const pi = onBridge(k) ? BRIDGE : Math.floor(h * BRIDGE);
         s.mesh.geometry = this.props[pi];
         s.mesh.userData.index = pi;
-        for (const [idx, m] of s.statues) m.visible = idx === pi;
+        for (const [idx, ms] of s.statues) for (const m of ms) m.visible = idx === pi;
         s.mesh.userData.banners = this.propBanners[pi];
         this.armFaller(k, s.side, s.mesh.geometry);
         s.mesh.position.x = s.side * 7.9;

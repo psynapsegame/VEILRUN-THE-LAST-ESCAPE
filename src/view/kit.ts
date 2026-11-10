@@ -69,22 +69,6 @@ function obelisk(b: Builder, x: number, z: number, h: number, w: number, y0 = 0)
     .add(frustum(w * 0.62, w * 0.62, w * 0.9, 0.02), PAL.gold, x, y0 + 1 + h + w * 0.45, z);
 }
 
-function palm(b: Builder, x: number, z: number, h: number, lean: number, y0 = 0): void {
-  const n = 7;
-  let px = x, py = y0;
-  for (let i = 0; i < n; i++) {
-    const seg = h / n, a = lean * (i / n);
-    b.add(new THREE.CylinderGeometry(0.2 - i * 0.012, 0.25 - i * 0.012, seg * 1.08, 8), i % 2 ? PAL.trunk : PAL.trunkDark, px + Math.sin(a) * seg * 0.5, py + seg * 0.5, z, 0, 0, -a);
-    px += Math.sin(a) * seg;
-    py += Math.cos(a) * seg;
-  }
-  for (let i = 0; i < 11; i++) {
-    const a = (i / 11) * Math.PI * 2, droop = 1.75 + (i % 3) * 0.12;
-    b.add(new THREE.ConeGeometry(0.5, 3.6, 4), i % 2 ? PAL.leaf : PAL.leafLight, px + Math.cos(a) * 1.45, py - 0.15 - (i % 3) * 0.2, z + Math.sin(a) * 1.45, 0, -a, -droop, [1, 1, 0.14]);
-  }
-  b.add(new THREE.SphereGeometry(0.36, 8, 6), PAL.trunkDark, px, py, z);
-}
-
 /** Where a cloth banner hangs: top-centre position, size, facing (rotation about Y) and colour index. */
 export type Anchor = [x: number, y: number, z: number, w: number, h: number, ry: number, colour: number];
 const ROAD = Math.PI / 2; // facing the road
@@ -110,7 +94,7 @@ const FRIEZE = [0, 0, 1, 0.5] as const;
  * `far`); x, y, z are in the piece's local frame (+x towards the road); statues face +z, towards the runner.
  */
 export interface StatuePlacement {
-  id: 'colossus' | 'sphinx' | 'head' | 'brazier';
+  id: 'colossus' | 'sphinx' | 'head' | 'brazier' | 'palm';
   far: boolean;
   index: number;
   x: number;
@@ -125,6 +109,9 @@ export const STATUES: StatuePlacement[] = [
   { id: 'colossus', far: true, index: 2, x: 0, y: 4.9, z: 0, scale: 12.5, ry: 0.3 },
   { id: 'head', far: false, index: 6, x: -3.6, y: -0.12, z: 0.4, scale: 2.7, ry: 0.5 },
   { id: 'brazier', far: false, index: 1, x: 0.2, y: 0.55, z: 0, scale: 2.4, ry: 0 },
+  { id: 'palm', far: false, index: 5, x: -0.2, y: 0, z: -3, scale: 8, ry: 0.6 },
+  { id: 'palm', far: false, index: 5, x: -2.8, y: 0, z: 2.6, scale: 9.5, ry: 2.1 },
+  { id: 'palm', far: false, index: 5, x: -5.8, y: 0, z: -1.2, scale: 7, ry: 4 },
 ];
 
 /** Roadside pieces. `fire[i]` is the flame height of piece i (0 = none), `banners[i]` its cloth anchors. */
@@ -198,9 +185,7 @@ export function sideProps(): { geos: THREE.BufferGeometry[]; fire: number[]; ban
   { // 5: palm garden with planters
     const b = new Builder();
     platform(b);
-    palm(b, -0.2, -3, 7.5, 0.5);
-    palm(b, -2.6, 2.4, 9, -0.35);
-    palm(b, -5.2, -1.2, 6.5, 0.25);
+    // the three sculpted palms are placed by STATUES
     for (const [px, pz, r] of [[0.6, 2.6, 0.9], [-3.8, -3.6, 1.1], [-1.2, 0, 0.7]] as const) {
       b.add(cyl(r + 0.25, 0.5, 12), PAL.stone, px, 0.25, pz).add(cyl(r + 0.32, 0.1, 12), PAL.gold, px, 0.52, pz);
       b.add(new THREE.SphereGeometry(r, 10, 7), PAL.leaf, px, 0.75, pz, 0, 0, 0, [1, 0.6, 1]);
@@ -252,27 +237,33 @@ export function sideProps(): { geos: THREE.BufferGeometry[]; fire: number[]; ban
   return { geos, fire, banners };
 }
 
-/** Monumental gateway spanning the road: two battered pylon towers, a lintel and a winged sun. */
+/** x of the pylon towers' centres, and their scale: a sculpted pylon is 5.5 m wide and 9 m high at this scale. */
+export const PYLON_X = 8.2;
+export const PYLON_SCALE = 9.5;
+
+/**
+ * Monumental gateway spanning the road: a foundation under each sculpted pylon (added by the scene once loaded),
+ * a lintel carrying a winged sun, and a flag mast on each tower.
+ */
 export function gateGeometry(): THREE.BufferGeometry {
   const b = new Builder();
   for (const s of [-1, 1]) {
-    b.add(frustum(5.4, 3.4, DEPTH + 14, 0.8), PAL.stone, s * 8, (14 - DEPTH) / 2, 0);
-    cornice(b, s * 8, 14, 0, 4.2, 2.6);
-    b.add(box(4.9, 0.4, 3.1), PAL.gold, s * 8, 4.4, 0);
-    b.add(cyl(0.12, 11, 6), PAL.gold, s * 9.6, 16.5, 1.9);
-    b.add(box(1.5, 0.25, 0.3), PAL.gold, s * 5.9, 9.75, 1.8);
+    b.add(box(6.4, DEPTH - 0.35, 4.6), PAL.stoneDark, s * PYLON_X, -(DEPTH + 0.35) / 2, 0);
+    b.add(box(6.7, 0.35, 4.9), PAL.stone, s * PYLON_X, -0.175, 0);
+    b.add(cyl(0.12, 7, 6), PAL.gold, s * PYLON_X, 12.5, 1.7);
+    b.add(box(1.5, 0.25, 0.3), PAL.gold, s * PYLON_X, 9.1, 1.9);
   }
-  b.add(box(11.6, 2.4, 2.6), PAL.stoneLight, 0, 11.2, 0);
-  cornice(b, 0, 12.4, 0, 11.2, 2.4);
-  b.add(new THREE.CylinderGeometry(1.25, 1.25, 0.3, 24), PAL.gold, 0, 11.2, 1.4, Math.PI / 2);
-  for (const s of [-1, 1]) for (let i = 0; i < 4; i++) b.add(box(1.5, 0.28 - i * 0.03, 0.12), PAL.gold, s * (2 + i * 0.3), 11.5 - i * 0.26, 1.4, 0, 0, s * 0.08);
+  b.add(box(11.4, 2.4, 2.6), PAL.stoneLight, 0, 7.3, 0);
+  cornice(b, 0, 8.5, 0, 11, 2.4);
+  b.add(new THREE.CylinderGeometry(1.25, 1.25, 0.3, 24), PAL.gold, 0, 7.3, 1.4, Math.PI / 2);
+  for (const s of [-1, 1]) for (let i = 0; i < 4; i++) b.add(box(1.5, 0.28 - i * 0.03, 0.12), PAL.gold, s * (2 + i * 0.3), 7.6 - i * 0.26, 1.4, 0, 0, s * 0.08);
   return b.build();
 }
 
 /** Cloth on the gateway: long banners on the pylons, pennants on the masts. */
 export const GATE_BANNERS: Anchor[] = [
-  [-5.9, 9.8, 1.85, 2.0, 6.0, 0, 1], [5.9, 9.8, 1.85, 2.0, 6.0, 0, 1],
-  [-10.5, 21.8, 1.9, 1.5, 4.5, 0, 0], [10.5, 21.8, 1.9, 1.5, 4.5, 0, 0],
+  [-4.75, 8.4, 1.5, 1.2, 3.0, 0, 1], [4.75, 8.4, 1.5, 1.2, 3.0, 0, 1],
+  [-9.05, 15.8, 1.75, 1.5, 3.2, 0, 0], [9.05, 15.8, 1.75, 1.5, 3.2, 0, 0],
 ];
 
 /** Second-row monuments rising from the city floor (never reached). */
