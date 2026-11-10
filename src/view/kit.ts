@@ -109,9 +109,8 @@ export const STATUES: StatuePlacement[] = [
   { id: 'colossus', far: true, index: 2, x: 0, y: 4.9, z: 0, scale: 12.5, ry: 0.3 },
   { id: 'head', far: false, index: 6, x: -3.6, y: -0.12, z: 0.4, scale: 2.7, ry: 0.5 },
   { id: 'brazier', far: false, index: 1, x: 0.2, y: 0.55, z: 0, scale: 2.4, ry: 0 },
-  { id: 'palm', far: false, index: 5, x: -0.2, y: 0, z: -3, scale: 8, ry: 0.6 },
-  { id: 'palm', far: false, index: 5, x: -2.8, y: 0, z: 2.6, scale: 9.5, ry: 2.1 },
-  { id: 'palm', far: false, index: 5, x: -5.8, y: 0, z: -1.2, scale: 7, ry: 4 },
+  { id: 'palm', far: false, index: 5, x: -0.6, y: 0, z: -2.6, scale: 8.5, ry: 0.6 },
+  { id: 'palm', far: false, index: 5, x: -4.2, y: 0, z: 2.2, scale: 9.5, ry: 2.1 },
 ];
 
 /** Roadside pieces. `fire[i]` is the flame height of piece i (0 = none), `banners[i]` its cloth anchors. */

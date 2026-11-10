@@ -9,7 +9,7 @@ Toute ressource non créée pour VEILRUN est listée ici avec sa licence. Les te
 
 Licence Poly Haven relue le 10/11/2026 via leur API publique : tous les assets sont en CC0.
 | Héros « Teal Sentinel » (`assets-src/hero-meshy/Sentinel_animated.glb`) : modèle généré avec Meshy d'après des images Gemini ; 5 animations tirées de la bibliothèque d'animations de Meshy (nommées « mixamo » dans le fichier : course rapide, course, saut, chute, repos) | Meshy (modèle) ; Adobe Mixamo, via Meshy (animations) | Conditions de Meshy (plan payant) ; conditions de Mixamo | À confirmer (voir ci-dessous) | meshy.ai ; mixamo.com | Personnage jouable (`src/assets/hero.glb`) |
-| Statues « Colosse », « Sphinx », « Tête », « Brasero » et « Idole » (`assets-src/Colosse.glb`, `Sphinx.glb`, `Tete.glb`, `Brasero.glb`, `Idole.glb`) | Générées avec Meshy par le porteur du projet, d'après des images de référence Gemini, le 10/11/2026 | Conditions de Meshy applicables au plan payant du porteur du projet | À confirmer (voir ci-dessous) | meshy.ai | Statues monumentales (`src/assets/statues/*.glb`) |
+| Statues et décors « Colosse », « Sphinx », « Tête », « Brasero », « Idole », « Pylône », « Palmier », « Cristal », « Porte solaire », « Colonne tombée » (`assets-src/*.glb`) | Générées avec Meshy par le porteur du projet, d'après des images de référence Gemini, le 10/11/2026 | Conditions de Meshy applicables au plan payant du porteur du projet | À confirmer (voir ci-dessous) | meshy.ai | Statues monumentales (`src/assets/statues/*.glb`) |
 | Images de décor : fresque, frise, 3 motifs de bannières, panorama, Dévoreur, icône, illustration de titre (`assets-src/gemini/*.jpg`) | Générées avec Gemini par le porteur du projet, le 10/11/2026 | Conditions des applications Gemini (usage commercial, responsabilité de l'utilisateur) | À confirmer (voir ci-dessous) | gemini.google.com | Fresques et frises sur les murs, bannières, ciel lointain, Dévoreur, icônes, écran de démarrage (`src/assets/art/*.webp`, icônes Android et web) |
 
 **À vérifier par le porteur du projet avant toute publication commerciale**
@@ -19,6 +19,6 @@ Licence Poly Haven relue le 10/11/2026 via leur API publique : tous les assets s
 - Aucune de ces ressources ne doit reproduire un personnage, un lieu ou un style protégé : les descriptions fournies à Meshy et Gemini n'en citent aucun.
 
 `src/assets/solaris/` est produit par `tools/fetch-solaris.mjs` (téléchargement, réduction, conversion).
-`src/assets/statues/` est produit par `tools/build-statue.mjs` (allègement à 6 000–9 000 triangles, textures 1 024 px ; l'idole existe aussi en version lointaine de 1 500 triangles ; la tête est tournée sur le dos).
+`src/assets/statues/` est produit par `tools/build-statue.mjs` (allègement à 2 600–9 000 triangles, textures 512–1 024 px ; versions lointaines de 400–1 500 triangles pour l'idole, la porte et la colonne ; le cristal est une forme à facettes de 104 triangles sans texture ; la tête est tournée sur le dos).
 `src/assets/art/` est produit par `tools/build-art.mjs`, les icônes par `tools/build-icons.mjs`.
 `src/assets/hero.glb` est produit par `tools/build-hero.mjs` à partir de ces sources (simplification, textures 1024 px en WebP, fusion des animations).
