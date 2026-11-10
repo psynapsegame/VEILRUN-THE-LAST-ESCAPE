@@ -3,7 +3,8 @@ import type { Action } from '../sim/player';
 /**
  * Touch gesture recogniser, independent from the DOM so it can be unit-tested.
  * A swipe fires as soon as the finger has travelled `threshold` px (no need to
- * lift), then re-arms from the current point so swipes can be chained.
+ * lift). The same touch can then chain a swipe in a *different* direction, but
+ * never repeats the same one: a long stroke is always exactly one action.
  */
 export class GestureRecognizer {
   threshold = 28;
@@ -18,13 +19,14 @@ export class GestureRecognizer {
   private sy = 0;
   private t0 = 0;
   private swiped = false;
+  private lastDir: Action | null = null;
   private lastTapT = -1;
   private lastTapX = 0;
   private lastTapY = 0;
 
   /** Scale thresholds to the screen (CSS px). */
   resize(w: number, h: number): void {
-    this.threshold = Math.max(18, Math.min(40, Math.min(w, h) * 0.055));
+    this.threshold = Math.max(22, Math.min(48, Math.min(w, h) * 0.07));
   }
 
   down(id: number, x: number, y: number, t: number): void {
@@ -34,6 +36,7 @@ export class GestureRecognizer {
     this.oy = this.sy = y;
     this.t0 = t;
     this.swiped = false;
+    this.lastDir = null;
   }
 
   move(id: number, x: number, y: number): Action | null {
@@ -42,11 +45,15 @@ export class GestureRecognizer {
     const dy = y - this.oy;
     const ax = Math.abs(dx);
     const ay = Math.abs(dy);
-    if (Math.max(ax, ay) < this.threshold) return null;
+    // A chained swipe needs a clearly deliberate second stroke.
+    if (Math.max(ax, ay) < this.threshold * (this.swiped ? 1.5 : 1)) return null;
+    const dir: Action = ax > ay ? (dx > 0 ? 'right' : 'left') : dy > 0 ? 'down' : 'up';
     this.ox = x;
     this.oy = y;
+    if (this.swiped && dir === this.lastDir) return null; // still the same stroke
     this.swiped = true;
-    return ax > ay ? (dx > 0 ? 'right' : 'left') : dy > 0 ? 'down' : 'up';
+    this.lastDir = dir;
+    return dir;
   }
 
   up(id: number, x: number, y: number, t: number): Action | null {

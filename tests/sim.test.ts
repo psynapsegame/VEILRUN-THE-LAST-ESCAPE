@@ -177,7 +177,17 @@ describe('gestes tactiles', () => {
     const r = mk();
     r.down(1, 100, 100, 0);
     expect(r.move(1, 140, 100)).toBe('right');
-    expect(r.move(1, 142, 60)).toBe('up');
+    expect(r.move(1, 142, 50)).toBe('up');
+  });
+  it('un long swipe ne change que d’une seule voie', () => {
+    const r = mk();
+    r.down(1, 40, 400, 0);
+    const out = [];
+    for (let x = 50; x <= 380; x += 10) out.push(r.move(1, x, 400));
+    expect(out.filter(Boolean)).toEqual(['right']);
+    r.up(1, 380, 400, 0.2);
+    r.down(1, 300, 400, 1);
+    expect(r.move(1, 260, 400)).toBe('left'); // a new touch swipes again
   });
   it('un tremblement ou un appui simple ne déclenche rien', () => {
     const r = mk();
