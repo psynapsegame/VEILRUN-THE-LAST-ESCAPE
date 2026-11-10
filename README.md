@@ -117,3 +117,13 @@ Un trou de 2 m de large coupe la chaussée dans une voie (ou, rarement, dans les
 ## Performances
 
 Les pièces sculptées (colosse, sphinx, tête, brasero, palmiers, pylônes) ont chacune une version de 400 à 900 triangles affichée au-delà de 45 à 90 m (`LOD_DIST` dans `src/view/solaris.ts`). Mesure sur une scène chargée à 520 m : 245 000 → 168 000 triangles (niveaux 0 à 2), 191 000 → 114 000 (niveaux 3 et 4). Les temps d'image ne peuvent pas être mesurés dans mon environnement, seul un téléphone réel le peut.
+
+## Mondes et portails
+
+Un portail (anneau lumineux sur toute la largeur de la route, vortex aux couleurs du monde d'arrivée) se dresse à 1 500 m, puis tous les 2 000 m. Le traverser fait passer de **SOLARIS** à **NEXUS** (la métropole futuriste de nuit), puis de NEXUS à SOLARIS, et ainsi de suite, sans écran de chargement : le monde est échangé à l'instant précis où le coureur franchit l'anneau, derrière un flash plein écran. Éclairage, brouillard, reflets, exposition, lueur et ombres suivent le monde.
+
+- **Zone dégagée** : aucun obstacle à moins de 32 m d'un portail ; une ligne de cristaux traverse l'anneau. Testé sur 100 courses.
+- **NEXUS** : ciel nocturne avec une planète à anneau, route de verre dessinée par la lumière, tours aux fenêtres allumées, panneaux holographiques abstraits. Décor provisoire entièrement généré par code (`src/view/nexus.ts`), à remplacer par des modèles Meshy et des images Gemini.
+- **Pièges de NEXUS** : lasers qui clignotent (1,25 s allumé sur 2,2 s, jamais dans la voie sûre, le dash les traverse) à la place de la moitié des murs, davantage de trous, barrière à sauter, portique laser rouge à passer en glissant, mur de sécurité à contourner.
+- **Test** : ajouter `?portal=300` à l'adresse rapproche le premier portail à 300 m. Calendrier dans `SCHEDULE` (`src/sim/config.ts`).
+- Les tests (`tests/worlds.test.ts`) couvrent le calendrier, la zone dégagée, les lasers, 300 parcours de 30 km et le joueur de référence à travers trois portails.
