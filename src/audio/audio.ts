@@ -1,8 +1,10 @@
 /**
- * Original procedural audio (Web Audio): no samples, nothing licensed.
- * Music is a generative loop in D Phrygian dominant whose tempo and brightness
- * follow the run's intensity.
+ * Audio engine. Real recordings (src/assets/audio, see tools/build-audio.mjs) play when they are loaded;
+ * every sound without a recording, and everything if loading fails, falls back to the original
+ * procedural synthesis below (a generative loop in D Phrygian dominant).
  */
+import { FILES } from './files';
+
 const SCALE = [0, 1, 4, 5, 7, 8, 10]; // D Phrygian dominant
 const ARP = [0, 2, 4, 6, 4, 2, 5, 3, 0, 2, 4, 7, 6, 4, 2, 1];
 const BASS = [0, 0, 0, 0, 5, 5, 3, 4];
@@ -19,6 +21,16 @@ export class GameAudio {
   private coinStreak = 0;
   private lastCoin = 0;
   muted = false;
+  /** Decoded recordings by name; missing = procedural fallback. */
+  private buf: Record<string, AudioBuffer> = {};
+  private sfxBus!: GainNode;
+  private musBus!: GainNode;
+  private layers: { name: string; src: AudioBufferSourceNode; gain: GainNode }[] = [];
+  private layerMode: 'none' | 'menu' | 'run' = 'none';
+  /** Menu screen: plays the menu theme. */
+  menuMusic = true;
+  /** Current world (0 SOLARIS, 1 NEXUS): drives the ambience bed. */
+  world = 0;
   /** 0..1, set by the game each frame. */
   intensity = 0;
   musicOn = false;
@@ -28,7 +40,9 @@ export class GameAudio {
     if (this.ctx) { void this.ctx.resume(); return; }
     const AC = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!AC) return;
-    const c = (this.ctx = new AC());
+    let c: AudioContext;
+    try { c = new AC({ sampleRate: 32000 }); } catch { c = new AC(); } // the files are 32 kHz: no resampling, half the memory
+    this.ctx = c;
     this.master = c.createGain();
     this.master.gain.value = this.muted ? 0 : 0.8;
     const comp = c.createDynamicsCompressor();
@@ -39,11 +53,99 @@ export class GameAudio {
     this.musicGain = c.createGain();
     this.musicGain.gain.value = 0.5;
     this.filter.connect(this.musicGain).connect(this.master);
+    this.sfxBus = c.createGain();
+    this.sfxBus.gain.value = 0.9;
+    this.sfxBus.connect(this.master);
+    this.musBus = c.createGain();
+    this.musBus.gain.value = 0.8;
+    this.musBus.connect(this.master);
     this.noise = c.createBuffer(1, c.sampleRate * 0.5, c.sampleRate);
     const d = this.noise.getChannelData(0);
     for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
     this.nextT = c.currentTime + 0.1;
-    this.timer = window.setInterval(() => this.schedule(), 60);
+    this.timer = window.setInterval(() => { this.schedule(); this.layersUpdate(); }, 60);
+    void this.load();
+  }
+
+  /** Decodes the recordings (menu theme first). A failure only means that sound stays procedural. */
+  private async load(): Promise<void> {
+    const c = this.ctx!;
+    const order = ['menu', 'ui', 'jump', 'land', 'lane', 'slide', 'crystal', 'dash', 'defeat', 'results', 'portal', 'devourer', 'ambience_solaris', 'run_1', 'run_2', 'run_3'];
+    for (const n of order) {
+      try {
+        const a = FILES[n];
+        const bytes = typeof a === 'string'
+          ? await (await fetch(a)).arrayBuffer()
+          : (a.buffer.slice(a.byteOffset, a.byteOffset + a.byteLength) as ArrayBuffer);
+        this.buf[n] = await c.decodeAudioData(bytes);
+      } catch (e) { console.warn('audio: cannot load', n, e); }
+    }
+  }
+  /** True once the three run layers are decoded: the procedural music then stays silent. */
+  private get sampled(): boolean { return !!(this.buf.run_1 && this.buf.run_2 && this.buf.run_3 && this.buf.menu); }
+
+  private startLoop(name: string, gain: number, when: number): void {
+    const c = this.ctx!;
+    const b = this.buf[name];
+    if (!b) return;
+    const src = c.createBufferSource();
+    src.buffer = b; src.loop = true;
+    const g = c.createGain();
+    g.gain.value = 0;
+    src.connect(g).connect(this.musBus);
+    src.start(when);
+    this.layers.push({ name, src, gain: g });
+    g.gain.setTargetAtTime(gain, when, 0.4);
+  }
+  private stopLayers(fade = 0.6): void {
+    const c = this.ctx!;
+    for (const l of this.layers) { l.gain.gain.setTargetAtTime(0, c.currentTime, fade / 3); l.src.stop(c.currentTime + fade + 0.1); }
+    this.layers = [];
+  }
+  /** Chooses menu / run music, mixes the three run layers by intensity and the ambience by world. */
+  private layersUpdate(): void {
+    const c = this.ctx;
+    if (!c || c.state !== 'running') return;
+    const want = !this.sampled ? 'none' : this.musicOn ? 'run' : this.menuMusic ? 'menu' : 'none';
+    if (want !== this.layerMode) {
+      this.stopLayers();
+      this.layerMode = want;
+      const t = c.currentTime + 0.05;
+      if (want === 'menu') this.startLoop('menu', 1, t);
+      if (want === 'run') {
+        for (const n of ['run_1', 'run_2', 'run_3']) this.startLoop(n, 0, t); // started together: they stay beat-aligned
+        this.startLoop('ambience_solaris', 0, t);
+      }
+    }
+    if (want !== 'run') return;
+    // Equal-power crossfades: calm layer -> driving layer -> full layer as speed rises
+    const i = this.intensity;
+    const x12 = Math.min(1, Math.max(0, (i - 0.2) / 0.3)), x23 = Math.min(1, Math.max(0, (i - 0.55) / 0.3));
+    const g1 = Math.cos(x12 * Math.PI / 2) * Math.cos(0);
+    const g2 = Math.sin(x12 * Math.PI / 2) * Math.cos(x23 * Math.PI / 2);
+    const g3 = Math.sin(x23 * Math.PI / 2);
+    for (const l of this.layers) {
+      const target = l.name === 'run_1' ? g1 : l.name === 'run_2' ? g2 : l.name === 'run_3' ? g3 : this.world === 0 ? 0.35 : 0;
+      l.gain.gain.setTargetAtTime(target, c.currentTime, 0.8);
+    }
+  }
+
+  /** Plays a recording once. Returns false when it is not loaded (the caller then uses the synthesis). */
+  private play(name: string, vol = 1, rate = 1, jitter = 0): boolean {
+    const c = this.ctx, b = this.buf[name];
+    if (!c || !b) return false;
+    const s = c.createBufferSource();
+    s.buffer = b;
+    s.playbackRate.value = rate * (1 + (Math.random() * 2 - 1) * jitter);
+    const g = c.createGain();
+    g.gain.value = vol;
+    s.connect(g).connect(this.sfxBus);
+    s.start();
+    return true;
+  }
+  /** The end-of-run theme (called when the result screen opens). */
+  result(): void {
+    if (this.ctx && this.ctx.state === 'running') this.play('results', 0.9);
   }
 
   setMuted(m: boolean): void {
@@ -96,7 +198,7 @@ export class GameAudio {
 
   private schedule(): void {
     const c = this.ctx;
-    if (!c || c.state !== 'running') return;
+    if (!c || c.state !== 'running' || this.sampled) return;
     if (this.nextT < c.currentTime) this.nextT = c.currentTime + 0.05;
     const bpm = 104 + 44 * this.intensity;
     const sixteenth = 60 / bpm / 4;
@@ -127,6 +229,25 @@ export class GameAudio {
     const c = this.ctx;
     if (!c || c.state !== 'running') return;
     const t = c.currentTime;
+    switch (name) {
+      case 'jump': if (this.play('jump', 0.9, 1, 0.06)) return; break;
+      case 'land': if (this.play('land', 0.9, 1, 0.06)) return; break;
+      case 'lane': if (this.play('lane', 0.8, 1, 0.06)) return; break;
+      case 'slide': if (this.play('slide', 0.9)) return; break;
+      case 'dash': if (this.play('dash', 1)) return; break;
+      case 'ui': if (this.play('ui', 0.8)) return; break;
+      case 'portal': if (this.play('portal', 1)) return; break;
+      case 'death': if (this.play('defeat', 1)) { this.hiss(t, 0.5, 0.35, 700, 0.5, 80); return; } break;
+      case 'coin': {
+        // pickups climb a major scale, like the old synthesis, by re-pitching the recording
+        this.coinStreak = t - this.lastCoin < 0.5 ? Math.min(this.coinStreak + 1, 9) : 0;
+        this.lastCoin = t;
+        const MAJ = [0, 2, 4, 5, 7, 9, 11, 12, 14, 16];
+        if (this.buf.crystal && this.play('crystal', 0.8, Math.pow(2, MAJ[this.coinStreak] / 12))) return;
+        this.coinStreak = Math.max(0, this.coinStreak - 1); // keep the fallback below consistent
+        break;
+      }
+    }
     switch (name) {
       case 'jump': this.tone('sine', 260, 620, t, 0.16, 0.25); this.hiss(t, 0.14, 0.12, 900, 1, 3000); break;
       case 'land': this.tone('sine', 120, 50, t, 0.1, 0.4); break;

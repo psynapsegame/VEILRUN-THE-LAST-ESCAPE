@@ -4,7 +4,7 @@
 import { build } from 'esbuild';
 import { mkdirSync, writeFileSync } from 'node:fs';
 
-const r = await build({ entryPoints: ['src/main.ts'], bundle: true, minify: true, format: 'iife', target: 'es2020', write: false, legalComments: 'none', loader: { '.glb': 'binary', '.hdr': 'binary', '.webp': 'dataurl' } });
+const r = await build({ entryPoints: ['src/main.ts'], bundle: true, minify: true, format: 'iife', target: 'es2020', write: false, legalComments: 'none', loader: { '.glb': 'binary', '.hdr': 'binary', '.m4a': 'binary', '.webp': 'dataurl' } });
 const js = r.outputFiles[0].text;
 const base = 'html,body{height:100%;margin:0;background:#07060b;color:#f4ecdc}:root{color-scheme:dark}';
 mkdirSync('dist', { recursive: true });

@@ -2,7 +2,7 @@ import { GameAudio } from './audio/audio';
 import { GestureRecognizer } from './input/gestures';
 import { QualityGovernor } from './quality';
 import { loadSave, recordRun, writeSave, KV } from './save';
-import { CFG, SCHEDULE, WORLD_NAMES } from './sim/config';
+import { CFG, SCHEDULE, WORLD_NAMES, portalNearest } from './sim/config';
 import { Game } from './sim/game';
 import { Action, Player } from './sim/player';
 import { Ui } from './ui/ui';
@@ -29,6 +29,7 @@ let splashDone = /[?&]nosplash/.test(location.search); // ?nosplash: skip the lo
 const portalParam = /[?&]portal=(\d+)/.exec(location.search);
 if (portalParam) SCHEDULE.first = +portalParam[1];
 let shownWorld = 0;
+let portalHeard = -1; // the portal whose sound has already played
 const idle: ViewState = { time: 0, dist: 0, speed: 9, player: new Player(), dashing: false, track: { rows: [], coins: [] } };
 
 const ui = new Ui(
@@ -50,6 +51,9 @@ if (splashDone) ui.hideSplash();
 
 function start(): void {
   shownWorld = 0;
+  portalHeard = -1;
+  audio.world = 0;
+  audio.menuMusic = false;
   game = new Game((Math.random() * 2 ** 31) | 0);
   gov.rewarm(2); // starting a run allocates and uploads: do not judge those frames
   world.reset();
@@ -64,6 +68,7 @@ function toMenu(): void {
   game = null;
   world.reset();
   audio.musicOn = false;
+  audio.menuMusic = true;
   audio.suspend(false);
   ui.menu(save);
 }
@@ -166,12 +171,16 @@ function frame(now: number): void {
       game.events.length = 0;
       ui.hud(game);
       audio.intensity = (game.speed - CFG.speedStart) / (CFG.speedMax - CFG.speedStart);
+      // The portal sound starts ~1.8 s before the ring, so its peak lands as the runner crosses it
+      const p = portalNearest(game.dist);
+      if (p > game.dist && p !== portalHeard && p - game.dist < game.speed * 1.8) { portalHeard = p; audio.sfx('portal'); }
     } else {
       dyingT += dt;
       if (dyingT > 1.1) {
         const rec = recordRun(save, game.score, game.dist, game.fragments);
         writeSave(store, save);
         ui.over(game, save, rec);
+        audio.result();
         mode = 'over';
       }
     }
@@ -189,7 +198,7 @@ function frame(now: number): void {
     shownWorld = world.worldIdx;
     if (mode === 'run') {
       ui.announce(WORLD_NAMES[shownWorld]);
-      audio.sfx('portal');
+      audio.world = shownWorld;
     }
   }
 }

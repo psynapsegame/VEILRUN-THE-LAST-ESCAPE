@@ -127,3 +127,6 @@ Un portail (anneau lumineux sur toute la largeur de la route, vortex aux couleur
 - **Pièges de NEXUS** : lasers qui clignotent (1,25 s allumé sur 2,2 s, jamais dans la voie sûre, le dash les traverse) à la place de la moitié des murs, davantage de trous, barrière à sauter, portique laser rouge à passer en glissant, mur de sécurité à contourner.
 - **Test** : ajouter `?portal=300` à l'adresse rapproche le premier portail à 300 m. Calendrier dans `SCHEDULE` (`src/sim/config.ts`).
 - Les tests (`tests/worlds.test.ts`) couvrent le calendrier, la zone dégagée, les lasers, 300 parcours de 30 km et le joueur de référence à travers trois portails.
+
+## Audio
+Real recordings (ElevenLabs) in `src/assets/audio`, rebuilt from `assets-src/audio` with `node tools/build-audio.mjs` (needs ffmpeg). Menu theme, three beat-aligned run layers crossfaded by speed, SOLARIS ambience, jump/land/lane/slide/dash/crystal/ui/portal/defeat/results/devourer. Not yet recorded (procedural fallback): smash, fall, collapse, ready, milestone, footsteps, NEXUS music. The Devourer sound is loaded but not yet triggered. Audible quality and loop seams have not been judged by ear here.

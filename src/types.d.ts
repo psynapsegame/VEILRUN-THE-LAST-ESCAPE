@@ -12,3 +12,7 @@ declare module '*.webp' {
   const url: string;
   export default url;
 }
+declare module '*.m4a' {
+  const asset: string | Uint8Array;
+  export default asset;
+}
