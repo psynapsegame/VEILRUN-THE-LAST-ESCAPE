@@ -10,6 +10,8 @@ export interface RunnerFrame {
   lean: number;
   speed: number;
   dashing: boolean;
+  /** Dead from a fall into a hole: flail in the air instead of lying down. */
+  fell?: boolean;
 }
 
 type Anim = 'run' | 'jump' | 'slide' | 'dash' | 'dead';
@@ -101,7 +103,7 @@ export class Runner {
 
   update(dt: number, f: RunnerFrame): void {
     if (!this.mixer) return;
-    const want: Anim = f.state === 'dead' ? 'dead' : f.dashing && f.state === 'run' ? 'dash' : f.state;
+    const want: Anim = f.state === 'dead' ? (f.fell ? 'jump' : 'dead') : f.dashing && f.state === 'run' ? 'dash' : f.state;
     if (want !== this.anim) {
       const cfg = ANIMS[want];
       const next = this.actions.get(want)!;

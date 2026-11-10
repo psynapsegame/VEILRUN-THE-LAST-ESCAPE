@@ -1,4 +1,4 @@
-import { CFG, OBSTACLE, speedAt } from './config';
+import { CFG, GAP, OBSTACLE, speedAt } from './config';
 import { Action, Player } from './player';
 import { Coin, Row, TrackGenerator } from './track';
 
@@ -17,6 +17,8 @@ export class Game {
   dashLeft = 0;
   dashCooldown = 0;
   time = 0;
+  /** True when the run ended by falling into a hole (the body keeps falling: see settle). */
+  fell = false;
   /** Events since the last drain; the view and audio consume them. */
   readonly events: GameEvent[] = [];
 
@@ -48,6 +50,25 @@ export class Game {
     if (this.player.act(a) && (a === 'left' || a === 'right')) this.events.push({ t: 'lane' });
   }
 
+  /** After a fall into a hole, keeps the body falling while the end-of-run screen comes up. */
+  settle(dt: number): void {
+    if (!this.fell) return;
+    const p = this.player;
+    p.vy -= 26 * dt;
+    p.y = Math.max(-14, p.y + p.vy * dt);
+  }
+
+  /** Is the runner on the ground over the hole in lane `l` of `row`? */
+  private overGap(row: { z: number; gapLen: number }, l: number): boolean {
+    const p = this.player;
+    return (
+      p.y <= 0.06 &&
+      Math.abs(p.x - (l - 1) * CFG.laneWidth) < GAP.halfW &&
+      this.dist > row.z - row.gapLen / 2 + GAP.edge &&
+      this.dist < row.z + row.gapLen / 2 - GAP.edge
+    );
+  }
+
   step(dt: number): void {
     if (this.dead) return;
     const p = this.player;
@@ -67,10 +88,20 @@ export class Game {
 
     // Obstacles: swept along z so a fast frame can never tunnel through one.
     for (const row of this.track.rows) {
-      if (row.z > this.dist + 2) break;
+      if (row.z > this.dist + 4) break;
       for (let l = 0; l < 3; l++) {
         const kind = row.cells[l];
         if (!kind || row.smashed[l]) continue;
+        if (kind === 'gap') {
+          if (this.overGap(row, l)) {
+            p.state = 'dead';
+            p.vy = -1;
+            this.fell = true;
+            this.events.push({ t: 'death' });
+            return;
+          }
+          continue;
+        }
         const o = OBSTACLE[kind];
         if (row.z + o.halfD < prev - CFG.halfD || row.z - o.halfD > this.dist + CFG.halfD) continue;
         if (Math.abs(p.x - (l - 1) * CFG.laneWidth) >= o.halfW + CFG.halfW) continue;

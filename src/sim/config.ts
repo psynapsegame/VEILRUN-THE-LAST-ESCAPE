@@ -22,10 +22,12 @@ export const CFG = {
   minRowTime: 0.85,
 } as const;
 
-export type Kind = 'low' | 'high' | 'full';
+/** 'gap' is a hole in the causeway: jump over it, or fall. The others are solid obstacles. */
+export type Kind = 'low' | 'high' | 'full' | 'gap';
+export type SolidKind = Exclude<Kind, 'gap'>;
 
 /** Collision volumes per obstacle kind (y range, half depth, half width). */
-export const OBSTACLE: Record<Kind, { y0: number; y1: number; halfD: number; halfW: number }> = {
+export const OBSTACLE: Record<SolidKind, { y0: number; y1: number; halfD: number; halfW: number }> = {
   // Fallen pillar: about 0.63 m high and 1.9 m wide in the model
   low: { y0: 0, y1: 0.62, halfD: 0.35, halfW: 0.85 },
   // Sun gate: its beam starts 1.43 m above the road (the runner slides at 0.7 m and stands at 1.7 m)
@@ -33,6 +35,16 @@ export const OBSTACLE: Record<Kind, { y0: number; y1: number; halfD: number; hal
   // The guardian idol is about 1 m wide: the collision matches it, with a little margin in the runner's favour
   full: { y0: 0, y1: 3.2, halfD: 0.45, halfW: 0.62 },
 };
+
+/** A hole is 2 m wide (a lane is 2.2 m) and the runner falls when he is on the ground over it. */
+export const GAP = { halfW: 1.0, edge: 0.15 };
+/**
+ * Length (m) of a hole at a given speed: a quarter of a second of running, so a jump (0.62 s in the air)
+ * always leaves a 0.37 s window to take off, at any speed.
+ */
+export function gapLength(speed: number): number {
+  return Math.min(7, Math.max(2.6, 0.25 * speed));
+}
 
 /** Base running speed for a travelled distance (monotonic, bounded). */
 export function speedAt(dist: number): number {

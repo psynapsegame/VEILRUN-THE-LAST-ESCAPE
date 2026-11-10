@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CFG, speedAt } from '../src/sim/config';
+import { CFG, GAP, gapLength, speedAt } from '../src/sim/config';
 import { Game } from '../src/sim/game';
 import { Player } from '../src/sim/player';
 import { TrackGenerator, validateRows, Row } from '../src/sim/track';
@@ -15,7 +15,7 @@ function gameWith(cells: Row['cells'], z = 30): Game {
   const g = new Game(1);
   g.track.rows.length = 0;
   g.track.coins.length = 0;
-  g.track.rows.push({ id: 1, z, cells, smashed: [false, false, false], safe: 1 });
+  g.track.rows.push({ id: 1, z, cells, gapLen: gapLength(speedAt(z)), smashed: [false, false, false], safe: 1 });
   return g;
 }
 function play(g: Game, until: number, script: (g: Game) => void = () => {}): void {
@@ -226,5 +226,118 @@ describe('sauvegarde', () => {
     expect(loadSave(s)).toEqual(defaultSave());
     expect(loadSave(null)).toEqual(defaultSave());
     expect(writeSave({ getItem: () => null, setItem: () => { throw new Error('quota'); } }, defaultSave())).toBe(false);
+  });
+});
+
+describe('trous dans la chaussée', () => {
+  /** A game with one hole in the middle lane at z = 40, play from the start. */
+  const holeGame = (cells: Row['cells'] = [null, 'gap', null]) => gameWith(cells, 40);
+
+  it('courir dessus sans sauter : chute mortelle, le corps continue de tomber', () => {
+    const g = holeGame();
+    play(g, 60);
+    expect(g.dead).toBe(true);
+    expect(g.fell).toBe(true);
+    const y0 = g.player.y;
+    for (let i = 0; i < 60; i++) g.settle(DT);
+    expect(g.player.y).toBeLessThan(y0 - 2);
+  });
+  it('un obstacle plein ne fait jamais « tomber » le coureur', () => {
+    const g = gameWith([null, 'full', null], 30);
+    play(g, 40);
+    expect(g.dead).toBe(true);
+    expect(g.fell).toBe(false);
+  });
+  it('sauter au bon moment : franchi, à toutes les vitesses (fenêtre de 0,37 s : de 0,13 s à 0,50 s avant le centre)', () => {
+    for (const startDist of [0, 800, 3000, 8000]) {
+      const v = speedAt(startDist);
+      const L = gapLength(v);
+      for (const early of [0.45, 0.3, 0.16]) {
+        const g = new Game(1);
+        g.track.rows.length = 0; g.track.coins.length = 0;
+        const z = startDist + 80;
+        g.track.rows.push({ id: 1, z, cells: [null, 'gap', null], gapLen: L, smashed: [false, false, false], safe: 1 });
+        g.dist = startDist;
+        let jumped = false;
+        while (!g.dead && g.dist < z + 15) {
+          if (!jumped && z - g.dist <= v * early) { g.act('up'); jumped = true; }
+          g.step(DT);
+        }
+        expect(g.dead, `départ ${startDist} m, saut ${early} s avant`).toBe(false);
+      }
+    }
+  });
+  it('sauter trop tard (déjà au-dessus du trou au sol) : on est déjà tombé', () => {
+    const g = holeGame();
+    let jumped = false;
+    while (!g.dead && g.dist < 55) {
+      if (!jumped && 40 - g.dist <= 0.5) { g.act('up'); jumped = true; }
+      g.step(DT);
+    }
+    expect(g.fell).toBe(true);
+  });
+  it('en l’air au-dessus du trou, on peut changer de voie sans tomber', () => {
+    const g = holeGame();
+    let jumped = false, moved = false;
+    while (!g.dead && g.dist < 60) {
+      if (!jumped && 40 - g.dist <= 11 * 0.3) { g.act('up'); jumped = true; }
+      if (jumped && !moved && g.player.y > 1.2 && g.dist > 38) { g.act('right'); moved = true; }
+      g.step(DT);
+    }
+    expect(moved).toBe(true);
+    expect(g.dead).toBe(false);
+  });
+  it('sauter trop tôt : on retombe dans le trou', () => {
+    const g = holeGame();
+    let jumped = false;
+    while (!g.dead && g.dist < 60) {
+      if (!jumped && 40 - g.dist <= 11 * 0.62 + 2) { g.act('up'); jumped = true; }
+      g.step(DT);
+    }
+    // takes off about 8.8 m before the middle: lands 1.4 m after its start... inside it
+    expect(g.dead).toBe(true);
+    expect(g.fell).toBe(true);
+  });
+  it('changer de voie avant le trou : on passe à côté sans sauter', () => {
+    const g = holeGame();
+    let done = false;
+    play(g, 55, x => { if (!done && 40 - x.dist < 10) { x.act('left'); done = true; } });
+    expect(g.dead).toBe(false);
+  });
+  it('se glisser dans le trou (au sol) : chute', () => {
+    const g = holeGame();
+    play(g, 60, x => { if (x.dist > 36 && x.dist < 38) x.act('down'); });
+    expect(g.fell).toBe(true);
+  });
+  it('un trou sur une voie voisine ne fait rien', () => {
+    const g = holeGame(['gap', null, 'gap']);
+    play(g, 60);
+    expect(g.dead).toBe(false);
+  });
+  it('la longueur du trou laisse toujours au moins 0,3 s de marge pour sauter', () => {
+    for (const v of [11, 15, 20, 25, 30, 34]) {
+      const L = gapLength(v);
+      const airtime = 2 * CFG.jumpVel / CFG.gravity; // about 0.62 s
+      expect((airtime * v - L) / v, `${v} m/s`).toBeGreaterThan(0.3);
+      expect(L).toBeGreaterThanOrEqual(2.6);
+      expect(L).toBeLessThanOrEqual(7);
+    }
+    expect(GAP.halfW * 2).toBeLessThan(CFG.laneWidth);
+  });
+  it('le générateur n’en place pas avant 120 m, puis en place de plus en plus', () => {
+    let early = 0, mid = 0, late = 0, nMid = 0, nLate = 0;
+    for (let seed = 1; seed <= 80; seed++) {
+      const t = new TrackGenerator(seed * 211);
+      t.generateUntil(8000);
+      for (const r of t.rows) {
+        const holes = r.cells.filter(c => c === 'gap').length;
+        if (r.z < 120) early += holes;
+        else if (r.z < 1500) { mid += holes; nMid++; }
+        else if (r.z > 5000) { late += holes; nLate++; }
+      }
+    }
+    expect(early).toBe(0);
+    expect(mid).toBeGreaterThan(0);
+    expect(late / nLate).toBeGreaterThan(mid / nMid);
   });
 });

@@ -1,4 +1,7 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { CFG, GAP } from '../sim/config';
+import type { Row } from '../sim/track';
 import { box, glowTexture } from './build';
 import { Banners } from './banners';
 import { hash, isCollapse } from './events';
@@ -15,6 +18,8 @@ import type { Particles } from './particles';
 /** SOLARIS — the golden antique city: sky, light, causeway and the recycling of kit pieces. */
 /** Where the sun sits in the sky (unit vector from the runner towards it). */
 export const SUN_DIR = new THREE.Vector3(-0.18, 0.2, -1).normalize();
+/** Holes cut into the road at the same time (rows are visible about 125 m ahead). */
+const GAP_N = 20;
 const SLOT = 14; // metres between roadside props
 const SLOTS = 13;
 /** Which far buildings appear, weighted: the giant colossus is rarer than the rest. */
@@ -34,6 +39,10 @@ export class Solaris {
   private propFire: number[];
   private propBanners: Anchor[][];
   private banners = new Banners();
+  /** Rectangles [xMin, xMax, zMin, zMax] of the holes in the road, in scene coordinates. */
+  private gapUniform = { value: new Float32Array(GAP_N * 4) };
+  /** Stone edges drawn around each hole so the causeway has thickness. */
+  private lips: THREE.Mesh[] = [];
   private devourer: Devourer;
   private fallers: { mesh: THREE.Mesh; k: number; side: number; angle: number; vel: number; done: boolean }[] = [];
   /** Resolves once every sculpted statue is loaded (the world swaps its obstacle model in then). */
@@ -120,8 +129,22 @@ export class Solaris {
     this.sky = sky.material as THREE.ShaderMaterial;
     this.group.add(sky);
 
+    // Holes: the road and its gold inlays discard every fragment inside a hole, so the city floor shows through
+    const cutGaps = (mat: THREE.Material): void => {
+      mat.onBeforeCompile = sh => {
+        sh.uniforms.uGaps = this.gapUniform;
+        sh.vertexShader = sh.vertexShader
+          .replace('#include <common>', '#include <common>\nvarying vec2 vGapXZ;')
+          .replace('#include <begin_vertex>', '#include <begin_vertex>\nvGapXZ = (modelMatrix * vec4(position, 1.0)).xz;');
+        sh.fragmentShader = sh.fragmentShader
+          .replace('#include <common>', `#include <common>\nvarying vec2 vGapXZ;\nuniform vec4 uGaps[${GAP_N}];`)
+          .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
+            for (int i = 0; i < ${GAP_N}; i++) { vec4 g = uGaps[i]; if (vGapXZ.x > g.x && vGapXZ.x < g.y && vGapXZ.y > g.z && vGapXZ.y < g.w) discard; }`);
+      };
+    };
     // Road: polished cream slabs with gold lane inlays, between rough-hewn curbs
     this.road = SURFACES.road();
+    cutGaps(this.road.material);
     this.road.repeat.set(8 / 3, 240 / 3);
     const road = new THREE.Mesh(new THREE.PlaneGeometry(8, 240), this.road.material);
     road.rotation.x = -Math.PI / 2;
@@ -129,10 +152,35 @@ export class Solaris {
     road.receiveShadow = true;
     this.group.add(road);
     const gold = new THREE.MeshStandardMaterial({ color: 0xffc35a, metalness: 1, roughness: 0.32, envMapIntensity: 1.3 });
+    cutGaps(gold);
     for (const x of [-1.1, 1.1, -3.7, 3.7]) {
       const inlay = new THREE.Mesh(box(Math.abs(x) > 2 ? 0.22 : 0.09, 0.02, 240), gold);
       inlay.position.set(x, 0.003, -100);
       this.group.add(inlay);
+    }
+    // One open box of stone per hole (unit length, stretched to the hole's length)
+    {
+      const D = 1.7, H = GAP.halfW;
+      const parts = [
+        new THREE.PlaneGeometry(2 * H, D).translate(0, -D / 2, 0.5), // far edge
+        new THREE.PlaneGeometry(2 * H, D).translate(0, -D / 2, -0.5), // near edge
+        new THREE.PlaneGeometry(1, D).rotateY(Math.PI / 2).translate(-H, -D / 2, 0), // sides
+        new THREE.PlaneGeometry(1, D).rotateY(Math.PI / 2).translate(H, -D / 2, 0),
+      ];
+      for (const g of parts) {
+        const uv = g.attributes.uv;
+        for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * 1.6, uv.getY(i) * 1.2);
+        g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count * 3).fill(0.45), 3));
+      }
+      const geo = mergeGeometries(parts.map(g => g.toNonIndexed()))!;
+      const mat = this.wall.material.clone();
+      mat.side = THREE.DoubleSide;
+      for (let i = 0; i < GAP_N; i++) {
+        const m = new THREE.Mesh(geo, mat);
+        m.visible = false;
+        this.group.add(m);
+        this.lips.push(m);
+      }
     }
     this.terrace = SURFACES.terrace();
     this.terrace.repeat.set(125, 125);
@@ -244,6 +292,30 @@ export class Solaris {
         if (idx !== undefined) m.visible = idx === place.index;
       }
     }
+  }
+
+  /** Cut this frame's holes into the road and stand their stone edges around them. */
+  updateGaps(rows: Row[], dist: number): void {
+    const R = this.gapUniform.value;
+    R.fill(0);
+    let n = 0;
+    for (const row of rows) {
+      const zc = dist - row.z; // scene z: negative ahead of the runner
+      if (zc > 14) continue;
+      if (zc < -125) break;
+      for (let l = 0; l < 3; l++) {
+        if (row.cells[l] !== 'gap' || n >= GAP_N) continue;
+        const cx = (l - 1) * CFG.laneWidth;
+        R[n * 4] = cx - GAP.halfW; R[n * 4 + 1] = cx + GAP.halfW;
+        R[n * 4 + 2] = zc - row.gapLen / 2; R[n * 4 + 3] = zc + row.gapLen / 2;
+        const lip = this.lips[n];
+        lip.visible = true;
+        lip.position.set(cx, 0, zc);
+        lip.scale.set(1, 1, row.gapLen);
+        n++;
+      }
+    }
+    for (let i = n; i < this.lips.length; i++) this.lips[i].visible = false;
   }
 
   /** Stand a column on the road-side corner of the one block per 476 m chosen for a collapse. */

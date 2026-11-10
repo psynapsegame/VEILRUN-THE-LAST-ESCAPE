@@ -5,7 +5,7 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { loadEnvironment } from './materials';
-import { CFG, Kind } from '../sim/config';
+import { CFG, SolidKind } from '../sim/config';
 import type { GameEvent } from '../sim/game';
 import type { Player } from '../sim/player';
 import type { Coin, Row } from '../sim/track';
@@ -22,10 +22,12 @@ export interface ViewState {
   speed: number;
   player: Player;
   dashing: boolean;
+  /** The run ended by falling into a hole. */
+  fell?: boolean;
   track: { rows: Row[]; coins: Coin[] };
 }
 
-const KINDS: Kind[] = ['low', 'high', 'full'];
+const KINDS: SolidKind[] = ['low', 'high', 'full'];
 const MAX_COINS = 96;
 const VIEW_DIST = 150;
 
@@ -48,11 +50,11 @@ export class World {
   private sc = new THREE.Vector3();
   private shadow: THREE.Mesh;
   private parts = new Particles();
-  private pools = new Map<Kind, THREE.Mesh[]>();
+  private pools = new Map<SolidKind, THREE.Mesh[]>();
   /** Every pooled mesh of each obstacle kind, so the sculpted models can replace the provisional ones. */
-  private allMeshes: Record<Kind, THREE.Mesh[]> = { low: [], high: [], full: [] };
+  private allMeshes: Record<SolidKind, THREE.Mesh[]> = { low: [], high: [], full: [] };
   /** Full-detail and far geometry per obstacle kind, once the sculpted models are loaded. */
-  private lods: Record<Kind, { geo: THREE.BufferGeometry; lod: THREE.BufferGeometry }> | null = null;
+  private lods: Record<SolidKind, { geo: THREE.BufferGeometry; lod: THREE.BufferGeometry }> | null = null;
   /** True once the sculpted obstacle models are in place (tests wait for it). */
   idol = false;
   private live = new Map<number, (THREE.Mesh | null)[]>();
@@ -202,14 +204,15 @@ export class World {
    * The fragment crystals replace the provisional octahedra.
    */
   private useObstacles(st: Statues, halo: (color: number, x: number, y: number, z: number, size: number) => THREE.Sprite): void {
-    const kinds: [Kind, Statues['idol'], Statues['idol'], [number, number, number], [number, number, number, number] | null][] = [
+    const kinds: [SolidKind, Statues['idol'], Statues['idol'], [number, number, number], [number, number, number, number] | null][] = [
       ['full', st.idol, st.idolLod, [1.4, 1.4, 1.4], [0, 2.5, 0.26, 0.85]],
       ['low', st.pillar, st.pillarLod, [2, 2.6, 2.1], null],
       ['high', st.gate, st.gateLod, [2.09, 3.1, 2.2], [0, 1.71, 0.46, 0.95]],
     ];
-    this.lods = { low: null!, high: null!, full: null! };
+    const lods = { low: null!, high: null!, full: null! } as NonNullable<World['lods']>;
+    this.lods = lods;
     for (const [k, main, lod, sc, glow] of kinds) {
-      this.lods[k] = { geo: main.geometry, lod: lod.geometry };
+      lods[k] = { geo: main.geometry, lod: lod.geometry };
       for (const m of this.allMeshes[k]) {
         m.geometry = main.geometry;
         m.material = main.material;
@@ -307,6 +310,7 @@ export class World {
         break;
       }
       case 'death':
+        if (s.fell) { this.shake = 0.5; break; } // swallowed by the hole: no burst of dust
         this.shake = 1;
         P.burst(40, p.x, 1, -0.4, 8, 1, 0.55, 0.3, 0.9, 10);
         P.burst(16, p.x, 1, -0.4, 5, 0.6, 0.4, 1, 0.8);
@@ -329,7 +333,7 @@ export class World {
         ms = [null, null, null];
         for (let l = 0; l < 3; l++) {
           const kind = row.cells[l];
-          if (!kind || row.smashed[l]) continue;
+          if (!kind || kind === 'gap' || row.smashed[l]) continue; // holes are cut into the road, not placed
           const m = this.pools.get(kind)!.pop();
           if (!m) continue;
           m.userData.kind = kind;
@@ -343,7 +347,7 @@ export class World {
       for (const m of ms) {
         if (!m) continue;
         m.position.z = z;
-        if (this.lods) m.geometry = z < -62 ? this.lods[m.userData.kind as Kind].lod : this.lods[m.userData.kind as Kind].geo;
+        if (this.lods) m.geometry = z < -62 ? this.lods[m.userData.kind as SolidKind].lod : this.lods[m.userData.kind as SolidKind].geo;
       }
     }
     for (const [id, ms] of this.live) {
@@ -366,7 +370,8 @@ export class World {
 
     // Runner
     this.runner.root.position.set(p.x, p.y, 0);
-    this.runner.update(dt, { state: p.state, vy: p.vy, lean: p.lean, speed: s.speed, dashing: s.dashing });
+    this.runner.update(dt, { state: p.state, vy: p.vy, lean: p.lean, speed: s.speed, dashing: s.dashing, fell: s.fell });
+    this.env.updateGaps(s.track.rows, s.dist);
     this.shadow.position.x = p.x;
     const sh = 1 / (1 + p.y * 0.7);
     this.shadow.scale.setScalar(sh);

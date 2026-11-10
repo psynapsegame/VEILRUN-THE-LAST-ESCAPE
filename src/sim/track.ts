@@ -1,4 +1,4 @@
-import { CFG, Kind, difficultyAt, pressureAt, speedAt } from './config';
+import { CFG, Kind, difficultyAt, gapLength, pressureAt, speedAt } from './config';
 import { Rng } from './rng';
 
 export interface Row {
@@ -6,6 +6,8 @@ export interface Row {
   z: number;
   /** One cell per lane (index 0..2 = lanes -1..1). */
   cells: (Kind | null)[];
+  /** Length (m) of the holes of this row. */
+  gapLen: number;
   /** Cells destroyed by a dash. */
   smashed: boolean[];
   /** Lane index the generator guarantees to be survivable. */
@@ -78,16 +80,20 @@ export class TrackGenerator {
       if (l === this.safe) {
         if (r.next() < pAction) {
           // After a jump comes a slide (and the reverse) more often than not: no rhythm to settle into
-          const other: Kind = this.lastAction === 'low' ? 'high' : 'low';
-          cells[l] = this.lastAction && r.next() < 0.65 ? other : r.next() < 0.5 ? 'low' : 'high';
+          // 'low' and 'gap' are both jumps, 'high' is the slide
+          const jump = (): Kind => (z > 120 && r.next() < 0.4 ? 'gap' : 'low');
+          const lastJump = this.lastAction === 'low' || this.lastAction === 'gap';
+          cells[l] = this.lastAction && r.next() < 0.65 ? (lastJump ? 'high' : jump()) : r.next() < 0.5 ? jump() : 'high';
         }
       } else if (r.next() < pBlock) {
         const k = r.next();
-        cells[l] = k < 0.5 ? 'full' : k < 0.75 ? 'low' : 'high';
+        cells[l] = k < 0.45 ? 'full' : k < 0.65 ? 'low' : k < 0.85 ? 'high' : z > 120 ? 'gap' : 'full';
       }
     }
+    // Now and then the whole causeway is open: a chasm to jump, in any lane
+    if (z > 600 && r.next() < 0.04 + 0.08 * d) { cells[0] = cells[1] = cells[2] = 'gap'; }
     this.lastAction = cells[this.safe] as Kind | null;
-    this.rows.push({ id: this.nextId++, z, cells, smashed: [false, false, false], safe: this.safe });
+    this.rows.push({ id: this.nextId++, z, cells, gapLen: gapLength(speedAt(z)), smashed: [false, false, false], safe: this.safe });
 
     // Fragments lead the eye towards the safe lane, then follow the required move.
     const safeCell = cells[this.safe];
@@ -95,7 +101,7 @@ export class TrackGenerator {
       const lane = k >= 3 ? prevSafe : this.safe;
       this.coins.push({ z: z - k * 2, lane, y: 1, taken: false });
     }
-    this.coins.push({ z, lane: this.safe, y: safeCell === 'low' ? 2.1 : safeCell === 'high' ? 0.45 : 1, taken: false });
+    this.coins.push({ z, lane: this.safe, y: safeCell === 'low' || safeCell === 'gap' ? 2.1 : safeCell === 'high' ? 0.45 : 1, taken: false });
 
     // Spacing in seconds: a steady squeeze, with bursts at the tightest spacing and breathers after them
     const tight = CFG.minRowTime * 1.02; // a hair above the minimum: speed grows a little between two rows
